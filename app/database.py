@@ -1,20 +1,25 @@
 import os
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
+import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/hackaton")
 
-engine = create_async_engine(DATABASE_URL, echo=True)
-async_session = async_sessionmaker(engine, expire_on_commit=False)
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
+class PredictionRecord(Base):
+    __tablename__ = "predictions"
 
-class Base(DeclarativeBase):
-  pass
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String, nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    predicted_class = Column(String, nullable=False)
+    duration = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+    filename = Column(String, nullable=False)
 
-
-async def get_db():
-  async with async_session() as session:
-    yield session
+def init_db():
+    Base.metadata.create_all(bind=engine)
