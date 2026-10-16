@@ -55,12 +55,10 @@ body {
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
   text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -111,4 +109,18 @@ code {
 }
 body {
   font-family: Calibri, sans-serif;
+}
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background-image: url('/milad-fakurian-GJKx5lhwU3M-unsplash.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }

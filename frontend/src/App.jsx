@@ -19,19 +19,75 @@ const VisuallyHiddenInput = styled('input')({
 
 const label = { slotProps: { input: { 'aria-label': 'Switch demo' } } };
 
+
+
 export default function App() {
+
+    const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      console.log('Отправляем файл:', file.name, file.size, 'байт');
+
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const responseText = await response.text();
+
+      console.log('HTTP статус:', response.status);
+      console.log('Ответ сервера:', responseText);
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}: ${responseText}`
+        );
+      }
+
+      alert('Файл успешно отправлен и обработан!');
+    } catch (error) {
+      console.error('Полная ошибка:', error);
+      alert(`Ошибка: ${error.message}`);
+    }
+  };
   return (
 
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        pt: '20vh',
-      }}
-    >
-      <h1>Опознаватель объекта по звуку</h1>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          width: '100%',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          pt: '20vh',
+        }}
+      >
+      <h1
+        style={{
+        fontFamily: 'Arial',
+        fontSize: '36px',
+        fontWeight: 'bold',
+        }}
+      >
+        Опознаватель объекта по звуку</h1>
+      <span
+        style={{
+        fontFamily: 'Roboto',
+        fontSize: '24px',
+        }}
+      >Полностью бесплатный онлайн-инструмент для определения класса объекта по записи звука его взаимодействия с окружающей средой</span>
+      <span
+        style={{
+          fontFamily: 'Roboto',
+          fontSize: '24px',
+        }}
+      >Поддерживаемые форматы:mp3</span>
 
       <Button
         component="label"
@@ -53,8 +109,7 @@ export default function App() {
         <VisuallyHiddenInput
           type="file"
           accept=".mp3,audio/mpeg"
-          onChange={(event) => console.log(event.target.files)}
-          multiple
+          onChange={handleFileChange}
         />
       </Button>
        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
