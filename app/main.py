@@ -25,11 +25,8 @@ async def startup():
         ml_model = saved_data["model"]
         classes_list = saved_data["classes"]
 
-app.mount(
-    "/assets",
-    StaticFiles(directory="frontend/dist/assets"),
-    name="assets"
-)
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 
 @app.get("/")
 async def serve_frontend(request: Request, db: AsyncSession = Depends(get_db)):
