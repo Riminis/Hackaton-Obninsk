@@ -20,7 +20,15 @@ const VisuallyHiddenInput = styled('input')({
 
 const label = { slotProps: { input: { 'aria-label': 'Switch demo' } } };
 
-
+const footerLinkSx = {
+  fontFamily: 'Roboto, sans-serif',
+  fontSize: '14px',
+  color: '#555',
+  textDecoration: 'none',
+  '&:hover': {
+    color: '#e00000',
+  },
+};
 
 export default function App() {
     const [isRecording, setIsRecording] = useState(false);
@@ -146,6 +154,9 @@ export default function App() {
       <Box
         sx={{
           minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
           width: '100%',
           boxSizing: 'border-box',
           display: 'flex',
@@ -154,6 +165,16 @@ export default function App() {
           pt: '20vh',
         }}
       >
+  <Box
+  sx={{
+    width: '100%',
+    maxWidth: '1000px',
+    mx: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    boxSizing: 'border-box',
+  }}>
       <h1
         style={{
         fontFamily: 'Arial',
@@ -270,141 +291,210 @@ export default function App() {
         </Box>
       </Box>
 
-      <Box
-        sx={{
-          mt: '25vh',
-          width: 'min(850px, 90%)',
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: 'stretch',
-          justifyContent: 'center',
-          gap: 3,
-        }}
-      >
-        {/* Карточка загрузки файла */}
         <Box
           sx={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            padding: '24px 18px',
+            mt: '25vh',
+            width: 'min(850px, 90%)',
             display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: 'stretch',
             justifyContent: 'center',
-            gap: 2,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            gap: 3,
           }}
         >
-          <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
-            Поддерживаемые форматы: MP3
-          </span>
-
-          <Button
-            component="label"
-            variant="contained"
-            startIcon={<CloudUploadIcon />}
+          {/* Карточка загрузки файла */}
+          <Box
             sx={{
-              backgroundColor: '#ff0000',
-              color: '#ffffff',
-              px: 4,
-              py: 1.5,
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontSize: '16px',
-              '&:hover': { backgroundColor: '#cc0000' },
+              flex: 1,
+              minWidth: 0,
+              boxSizing: 'border-box',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '24px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
             }}
           >
-            Загрузить файл
-            <VisuallyHiddenInput
-              type="file"
-              accept=".mp3,audio/mpeg"
-              onChange={handleFileChange}
-            />
-          </Button>
-        </Box>
+            <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
+              Поддерживаемые форматы: MP3
+            </span>
 
-        {/* Карточка микрофона */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            padding: '24px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 2,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-          }}
-        >
-          <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
-            Запись звука с микрофона
-          </span>
-
-          {!isRecording ? (
             <Button
+              component="label"
               variant="contained"
-              startIcon={<MicIcon />}
-              onClick={startRecording}
+              startIcon={<CloudUploadIcon />}
               sx={{
                 backgroundColor: '#ff0000',
-                borderRadius: '10px',
-                textTransform: 'none',
+                color: '#ffffff',
                 px: 4,
                 py: 1.5,
+                borderRadius: '10px',
+                textTransform: 'none',
+                fontSize: '16px',
                 '&:hover': { backgroundColor: '#cc0000' },
               }}
             >
-              Начать запись
+              Загрузить файл
+              <VisuallyHiddenInput
+                type="file"
+                accept=".mp3,audio/mpeg"
+                onChange={handleFileChange}
+              />
             </Button>
-          ) : (
-            <Button
-              variant="contained"
-              startIcon={<StopIcon />}
-              onClick={stopRecording}
-              sx={{
-                backgroundColor: '#333333',
-                borderRadius: '10px',
-                textTransform: 'none',
-                px: 4,
-                py: 1.5,
-              }}
-            >
-              Остановить запись
-            </Button>
-          )}
+          </Box>
 
-          {selectedFile?.name === 'recording.webm' && (
-            <Button
-              variant="outlined"
-              onClick={() => uploadAudio(selectedFile)}
-            >
-              Отправить запись
-            </Button>
-          )}
-        </Box>
-      </Box>
-       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <span
-            style={{
-              fontFamily: 'Roboto',
-              fontSize: '24px',
+          {/* Карточка микрофона */}
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              boxSizing: 'border-box',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '24px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 2,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
             }}
           >
-            Удалить фоновый шум
-          </span>
-         <Checkbox
-            checked={removeNoise}
-            onChange={(event) => setRemoveNoise(event.target.checked)}
-          />
+            <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
+              Запись звука с микрофона
+            </span>
+
+            {!isRecording ? (
+              <Button
+                variant="contained"
+                startIcon={<MicIcon />}
+                onClick={startRecording}
+                sx={{
+                  backgroundColor: '#ff0000',
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  px: 4,
+                  py: 1.5,
+                  '&:hover': { backgroundColor: '#cc0000' },
+                }}
+              >
+                Начать запись
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<StopIcon />}
+                onClick={stopRecording}
+                sx={{
+                  backgroundColor: '#333333',
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  px: 4,
+                  py: 1.5,
+                }}
+              >
+                Остановить запись
+              </Button>
+            )}
+
+            {selectedFile?.name === 'recording.webm' && (
+              <Button
+                variant="outlined"
+                onClick={() => uploadAudio(selectedFile)}
+              >
+                Отправить запись
+              </Button>
+            )}
+          </Box>
         </Box>
-        <SpectrogramView file={selectedFile} />
-    </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <span
+              style={{
+                fontFamily: 'Roboto',
+                fontSize: '24px',
+              }}
+            >
+              Удалить фоновый шум
+            </span>
+          <Checkbox
+              checked={removeNoise}
+              onChange={(event) => setRemoveNoise(event.target.checked)}
+            />
+          </Box>
+          <SpectrogramView file={selectedFile} />
+      </Box>
+<Box
+  component="footer"
+  sx={{
+    mt: 'auto',
+    width: '100%',
+    py: 3,
+    textAlign: 'center',
+  }}
+>
+   <Box
+            sx={{
+              maxWidth: 1000,
+              mx: 'auto',
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
+          >
+            <Box
+              sx={{
+                fontFamily: 'Roboto, sans-serif',
+                fontSize: '13px',
+                color: '#999',
+              }}
+            >
+              © {new Date().getFullYear()} Опознаватель объекта по звуку
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: { xs: 2, sm: 3 },
+              }}
+            >
+              <Box
+                component="a"
+                href="https://t.me/your_username"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={footerLinkSx}
+              >
+                Telegram
+              </Box>
+
+              <Box
+                component="a"
+                href="mailto:your-email@example.com"
+                sx={footerLinkSx}
+              >
+                Почта
+              </Box>
+
+              <Box
+                component="a"
+                href="https://t.me/your_username"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={footerLinkSx}
+              >
+                Контакты
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+</Box>
   );
 }
