@@ -1,110 +1,71 @@
-
 import os
 import shutil
-import tempfile
-from pathlib import Path
-
 import joblib
 from fastapi import Depends, FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.database import Base, engine, get_db
 from app.models import PredictionLog, VisitLog
 from app.audio_utils import preprocess_audio, extract_features
-
 
 app = FastAPI(title="Hackaton Obninsk API")
 
 ml_model = None
 classes_list = []
 
-FRONTEND_DIR = Path("frontend/dist")
-
-
 @app.on_event("startup")
 async def startup():
     global ml_model, classes_list
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    model_path = Path("model.joblib")
-    if model_path.exists():
-        saved_data = joblib.load(model_path)
+    
+    if os.path.exists("model.joblib"):
+        saved_data = joblib.load("model.joblib")
         ml_model = saved_data["model"]
         classes_list = saved_data["classes"]
 
-
-# Статические файлы подключаем только один раз.
-if (FRONTEND_DIR / "assets").is_dir():
-    app.mount(
-        "/assets",
-        StaticFiles(directory=str(FRONTEND_DIR / "assets")),
-        name="assets",
-    )
-
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 
 @app.get("/")
-async def serve_frontend(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
+async def serve_frontend(request: Request, db: AsyncSession = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
-
     new_visit = VisitLog(ip_address=client_ip)
     db.add(new_visit)
     await db.commit()
-
-    return FileResponse(str(FRONTEND_DIR / "index.html"))
-
+    
+    return FileResponse("frontend/dist/index.html")
 
 @app.get("/api/ping")
 async def ping_db(db: AsyncSession = Depends(get_db)):
     return {"db_connection": "success"}
 
-
 @app.post("/api/predict")
 async def predict_audio(
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
 ):
-    suffix = Path(file.filename or "audio.mp3").suffix or ".mp3"
-    temp_file_path = None
-
+    temp_file_path = f"temp_{file.filename}"
+    with open(temp_file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
     try:
-        with tempfile.NamedTemporaryFile(
-            suffix=suffix, delete=False
-        ) as temp_file:
-            temp_file_path = temp_file.name
-            shutil.copyfileobj(file.file, temp_file)
-
         waveform = preprocess_audio(temp_file_path)
         features = extract_features(waveform)
-
+        
         if ml_model is not None:
-            prediction_idx = int(
-                ml_model.predict([features.numpy()])[0]
-            )
+            prediction_idx = ml_model.predict([features.numpy()])[0]
             prediction_result = classes_list[prediction_idx]
         else:
             prediction_result = "Модель не загружена"
-
-        prediction_log = PredictionLog(
-            filename=file.filename or "unknown",
-            result=str(prediction_result),
-        )
-        db.add(prediction_log)
-        await db.commit()
-
-        return {
-            "filename": file.filename,
-            "prediction": prediction_result,
-        }
-
     finally:
-        if temp_file_path and os.path.exists(temp_file_path):
+        if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-        await file.close()
+    prediction_log = PredictionLog(
+        filename=file.filename or "unknown", result=prediction_result
+    )
+    db.add(prediction_log)
+    await db.commit()
+
+    return {"filename": file.filename, "prediction": prediction_result}

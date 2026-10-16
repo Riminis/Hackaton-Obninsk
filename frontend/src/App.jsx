@@ -20,6 +20,7 @@ const VisuallyHiddenInput = styled('input')({
 
 const label = { slotProps: { input: { 'aria-label': 'Switch demo' } } };
 
+
 const footerLinkSx = {
   fontFamily: 'Roboto, sans-serif',
   fontSize: '14px',
@@ -34,8 +35,12 @@ export default function App() {
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef(null);
     const streamRef = useRef(null);
+    const [prediction, setPrediction] = useState(null);
+    const [isPredicting, setIsPredicting] = useState(false);
+    const [predictionError, setPredictionError] = useState("");
     const [removeNoise, setRemoveNoise] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
+    
       const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -89,66 +94,60 @@ export default function App() {
 
     setIsRecording(false);
   };
-        const uploadAudio = async (file) => {
-      const formData = new FormData();
+            
+    const uploadAudio = async (file) => {
+      if (!file) return;
 
-      formData.append('file', file);
-      formData.append('remove_noise', String(removeNoise));
+      setSelectedFile(file);
+      setPrediction(null);
+      setPredictionError("");
+      setIsPredicting(true);
 
       try {
-        const response = await fetch('/api/predict', {
-          method: 'POST',
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("remove_noise", String(removeNoise));
+
+        const response = await fetch("/api/predict", {
+          method: "POST",
           body: formData,
         });
 
         const responseText = await response.text();
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${responseText}`);
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error("Сервер вернул ответ не в формате JSON");
         }
 
-        console.log('Ответ сервера:', responseText);
-        alert('Аудио успешно отправлено!');
+        if (!response.ok) {
+          throw new Error(
+            data.detail || `Ошибка сервера: HTTP ${response.status}`
+          );
+        }
+
+        console.log("Ответ сервера:", data);
+        setPrediction(data);
       } catch (error) {
-        console.error('Ошибка отправки:', error);
-        alert(`Ошибка: ${error.message}`);
+        console.error("Ошибка распознавания:", error);
+        setPredictionError(error.message || "Не удалось распознать звук");
+      } finally {
+        setIsPredicting(false);
       }
     };
-    const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
 
-    setSelectedFile(file);
+    const handleFileChange = (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('remove_noise', String(removeNoise));
+      uploadAudio(file);
 
-    try {
-      console.log('Отправляем файл:', file.name, file.size, 'байт');
-      console.log('Удаление шума:', removeNoise);
+      // Позволяет выбрать тот же файл повторно
+      event.target.value = "";
+    };
 
-      const response = await fetch('/api/predict', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const responseText = await response.text();
-
-      console.log('HTTP статус:', response.status);
-      console.log('Ответ сервера:', responseText);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${responseText}`);
-      }
-
-      alert('Файл успешно отправлен и обработан!');
-    } catch (error) {
-      console.error('Полная ошибка:', error);
-      alert(`Ошибка: ${error.message}`);
-    }
-  };
-  
   return (
 
       <Box
@@ -426,6 +425,139 @@ export default function App() {
             />
           </Box>
           <SpectrogramView file={selectedFile} />
+                    {isPredicting && (
+            <div className="result-card result-loading">
+              <div className="loader" />
+              <h3>Анализируем звук...</h3>
+              <p>Определяем материал по характеристикам удара</p>
+            </div>
+          )}
+
+          {predictionError && (
+            <div className="result-card result-error">
+              <span className="result-icon">!</span>
+              <div>
+                <h3>Не удалось распознать звук</h3>
+                <p>{predictionError}</p>
+              </div>
+            </div>
+          )}
+
+          {prediction && (
+            <div className="result-card">
+              <div className="result-heading">
+                <div>
+                  <span className="result-eyebrow">РЕЗУЛЬТАТ АНАЛИЗА</span>
+                  <h2>Материал определён</h2>
+                </div>
+
+                <span className="result-check">✓</span>
+              </div>
+
+              <div className="material-result">
+                <div className="material-symbol">
+                  {String(
+                    prediction.material ??
+                    prediction.label ??
+                    prediction.prediction ??
+                    ""
+                  ).toLowerCase().includes("wood")
+                    ? "🪵"
+                    : "🔩"}
+                </div>
+
+                <div>
+                  <span className="material-caption">Предполагаемый материал</span>
+
+                  <h1>
+                    {(() => {
+                      const material = String(
+                        prediction.material ??
+                        prediction.label ??
+                        prediction.prediction ??
+                        "Неизвестно"
+                      ).toLowerCase();
+
+                      if (material.includes("wood")) return "Дерево";
+                      if (material.includes("metal")) return "Металл";
+
+                      return prediction.material ??
+                        prediction.label ??
+                        prediction.prediction ??
+                        "Неизвестно";
+                    })()}
+                  </h1>
+
+                  <span className="material-class">
+                    Класс модели: {
+                      prediction.class_name ??
+                      prediction.label ??
+                      prediction.prediction ??
+                      "—"
+                    }
+                  </span>
+                </div>
+              </div>
+
+              {(prediction.confidence != null ||
+                prediction.probability != null) && (
+                <div className="confidence-section">
+                  <div className="confidence-label">
+                    <span>Уверенность модели</span>
+                    <strong>
+                      {Math.round(
+                        Number(prediction.confidence ?? prediction.probability) *
+                        (Number(prediction.confidence ?? prediction.probability) <= 1
+                          ? 100
+                          : 1)
+                      )}%
+                    </strong>
+                  </div>
+
+                  <div className="confidence-track">
+                    <div
+                      className="confidence-fill"
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            Number(prediction.confidence ?? prediction.probability) *
+                              (Number(prediction.confidence ?? prediction.probability) <= 1
+                                ? 100
+                                : 1)
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedFile && (
+                <div className="result-file">
+                  <span className="file-symbol">♫</span>
+                  <div className="result-file-info">
+                    <strong>{selectedFile.name}</strong>
+                    <span>
+                      {(selectedFile.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <span className="file-ready">Обработан</span>
+                </div>
+              )}
+
+              <button
+                className="result-button"
+                onClick={() => {
+                  setPrediction(null);
+                  setPredictionError("");
+                }}
+              >
+                Распознать другой звук
+              </button>
+            </div>
+          )}
       </Box>
 <Box
   component="footer"
@@ -481,16 +613,6 @@ export default function App() {
                 sx={footerLinkSx}
               >
                 Почта
-              </Box>
-
-              <Box
-                component="a"
-                href="https://t.me/your_username"
-                target="_blank"
-                rel="noopener noreferrer"
-                sx={footerLinkSx}
-              >
-                Контакты
               </Box>
             </Box>
           </Box>
