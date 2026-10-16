@@ -29,7 +29,7 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/predict")
+@app.post("/api/predict")
 async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     filename = file.filename or "audio.mp3"
     file_location = os.path.join(UPLOAD_DIR, filename)
