@@ -1,8 +1,10 @@
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database import Base, engine, get_db
 from app.models import VisitLog
-from fastapi import Depends, FastAPI, Request
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI(title="Hackathon Obninsk API")
 
@@ -13,26 +15,25 @@ async def startup():
     await conn.run_sync(Base.metadata.create_all)
 
 
-@app.get("/")
-async def root(request: Request, db: AsyncSession = Depends(get_db)):
-  client_ip = request.client.host if request.client else "unknown"
+# 1. Монтируем папку со стадией сборки Vite (скрипты, стили, картинки)
+app.mount(
+    "/assets", StaticFiles(directory="frontend/dist/assets"), name="assets"
+)
 
+
+# 2. Главный корень сайта отдаем с логикой логирования визита и рендером index.html
+@app.get("/")
+async def serve_frontend(request: Request, db: AsyncSession = Depends(get_db)):
+  # Записываем визит в базу данных PostgreSQL
+  client_ip = request.client.host if request.client else "unknown"
   new_visit = VisitLog(ip_address=client_ip)
   db.add(new_visit)
   await db.commit()
 
-  return {
-      "message": "Сессия активна, визит записан в PostgreSQL!",
-      "status": "ok",
-      "client_ip": client_ip,
-  }
+  # Отдаем собранный React-файл
+  return FileResponse("frontend/dist/index.html")
 
 
 @app.get("/api/ping")
 async def ping_db(db: AsyncSession = Depends(get_db)):
-  try:
-    result = await db.execute(text("SELECT 1"))
-    val = result.scalar()
-    return {"db_connection": "success", "result": val}
-  except Exception as e:
-    return {"db_connection": "error", "detail": str(e)}
+  return {"db_connection": "success"}
