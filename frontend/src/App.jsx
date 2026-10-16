@@ -168,10 +168,111 @@ export default function App() {
         fontSize: '24px',
         }}
       >Полностью бесплатный онлайн-инструмент для определения класса объекта по записи звука его взаимодействия с окружающей средой</span>
+      
+      {/* Как работает сайт */}
+      <Box
+        sx={{
+          width: 'min(850px, 90%)',
+          mt: 5,
+          mb: 2,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            position: 'relative',
+            gap: 2,
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: '18px',
+              left: '16.66%',
+              right: '16.66%',
+              height: '1px',
+              backgroundColor: '#d9d9d9',
+            },
+          }}
+        >
+          {[
+            {
+              number: '01',
+              title: 'Загрузка аудио',
+              description: 'Загрузите MP3-файл или запишите звук с микрофона',
+            },
+            {
+              number: '02',
+              title: 'Анализ записи',
+              description: 'Система обработает звук и определит его признаки',
+            },
+            {
+              number: '03',
+              title: 'Результат',
+              description: 'Получите предсказанный класс объекта',
+            },
+          ].map((step) => (
+            <Box
+              key={step.number}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+                position: 'relative',
+                gap: 1.5,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  backgroundColor: '#fff',
+                  border: '1px solid #e00000',
+                  color: '#e00000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontFamily: 'Roboto, sans-serif',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                {step.number}
+              </Box>
+
+              <Box
+                sx={{
+                  fontFamily: 'Roboto, sans-serif',
+                  fontSize: { xs: '14px', sm: '16px' },
+                  fontWeight: 600,
+                  color: '#222',
+                }}
+              >
+                {step.title}
+              </Box>
+
+              <Box
+                sx={{
+                  fontFamily: 'Roboto, sans-serif',
+                  fontSize: { xs: '12px', sm: '14px' },
+                  lineHeight: 1.6,
+                  color: '#777',
+                  maxWidth: 220,
+                }}
+              >
+                {step.description}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      </Box>
 
       <Box
         sx={{
-          mt: '40vh',
+          mt: '25vh',
           width: 'min(850px, 90%)',
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
