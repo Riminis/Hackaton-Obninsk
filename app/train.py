@@ -9,6 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from app.audio_utils import preprocess_audio, extract_features
+from sklearn.calibration import CalibratedClassifierCV
 
 def load_dataset(csv_path: str = "data/metadata.csv", audio_dir: str = "data/audio"):
     df = pd.read_csv(csv_path)
@@ -41,7 +42,7 @@ if __name__ == "__main__":
         X, y, indices, test_size=0.2, random_state=42, stratify=y
     )
     
-    model = make_pipeline(StandardScaler(), SVC(kernel='rbf', C=1.0, random_state=42))
+    model = make_pipeline(StandardScaler(), CalibratedClassifierCV(SVC(kernel='rbf', C=1.0, random_state=42)))
     model.fit(X_train, y_train)
     
     preds = model.predict(X_test)
