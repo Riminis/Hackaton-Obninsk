@@ -13,3 +13,13 @@ class VisitLog(Base):
       DateTime, default=datetime.datetime.utcnow
   )
 
+
+class PredictionLog(Base):
+  __tablename__ = "prediction_logs"
+
+  id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+  filename: Mapped[str] = mapped_column(String, nullable=False)
+  result: Mapped[str] = mapped_column(String, nullable=False)
+  created_at: Mapped[datetime.datetime] = mapped_column(
+      DateTime, default=datetime.datetime.utcnow
+  )
