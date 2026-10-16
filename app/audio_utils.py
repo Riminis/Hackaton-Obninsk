@@ -1,13 +1,17 @@
 import torch
 import torchaudio
 import torchaudio.functional as F
+import soundfile as sf
+import numpy as np
 
 def preprocess_audio(file_path: str, target_sample_rate: int = 16000, target_duration_sec: float = 3.0) -> torch.Tensor:
-    waveform, sample_rate = torchaudio.load(file_path)
+    data, sample_rate = sf.read(file_path)
     
-    if waveform.shape[0] > 1:
-        waveform = torch.mean(waveform, dim=0, keepdim=True)
+    if len(data.shape) > 1:
+        data = np.mean(data, axis=1)
         
+    waveform = torch.tensor(data, dtype=torch.float32).unsqueeze(0)
+    
     if sample_rate != target_sample_rate:
         waveform = F.resample(waveform, sample_rate, target_sample_rate)
         
