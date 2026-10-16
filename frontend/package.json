@@ -15,7 +15,8 @@
     "@mui/icons-material": "^9.5.0",
     "@mui/material": "^9.5.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "wavesurfer.js": "^8.0.2"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

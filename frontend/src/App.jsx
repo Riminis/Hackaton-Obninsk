@@ -1,7 +1,9 @@
 
 import Button from '@mui/material/Button';
+import SpectrogramView from './Spectrogram';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
+import { useState } from 'react';
 import Switch from '@mui/material/Switch';
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -22,16 +24,21 @@ const label = { slotProps: { input: { 'aria-label': 'Switch demo' } } };
 
 
 export default function App() {
-
+    const [removeNoise, setRemoveNoise] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null);
     const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setSelectedFile(file);
+
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('remove_noise', String(removeNoise));
 
     try {
       console.log('Отправляем файл:', file.name, file.size, 'байт');
+      console.log('Удаление шума:', removeNoise);
 
       const response = await fetch('/api/predict', {
         method: 'POST',
@@ -44,9 +51,7 @@ export default function App() {
       console.log('Ответ сервера:', responseText);
 
       if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status}: ${responseText}`
-        );
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
       }
 
       alert('Файл успешно отправлен и обработан!');
@@ -82,36 +87,60 @@ export default function App() {
         fontSize: '24px',
         }}
       >Полностью бесплатный онлайн-инструмент для определения класса объекта по записи звука его взаимодействия с окружающей средой</span>
-      <span
-        style={{
-          fontFamily: 'Roboto',
-          fontSize: '24px',
-        }}
-      >Поддерживаемые форматы:mp3</span>
 
-      <Button
-        component="label"
-        role={undefined}
-        variant="contained"
-        tabIndex={-1}
-        startIcon={<CloudUploadIcon />}
-        sx={{
-          mt: '35vh',
-          backgroundColor: '#ff0000',
-          color: '#ffffff',
-          '&:hover': {
-            backgroundColor: '#cc0000',
-          },
-        }}
-      >
-        Upload your mp3
+        <Box
+            sx={{
+            mt: '40vh', // опускаем коробку ниже
+            width: 'min(400px, 85%)', // была 500px
+            boxSizing: 'border-box',
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            padding: '24px 18px', // уменьшаем внутренние отступы
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2, // меньше расстояние между текстом и кнопкой
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)',
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'Roboto, sans-serif',
+              fontSize: '20px',
+              color: '#333333',
+              textAlign: 'center',
+            }}
+          >
+            Поддерживаемые форматы: MP3
+          </span>
 
-        <VisuallyHiddenInput
-          type="file"
-          accept=".mp3,audio/mpeg"
-          onChange={handleFileChange}
-        />
-      </Button>
+          <Button
+            component="label"
+            variant="contained"
+            startIcon={<CloudUploadIcon />}
+            sx={{
+              backgroundColor: '#ff0000',
+              color: '#ffffff',
+              px: 4,
+              py: 1.5,
+              borderRadius: '10px',
+              textTransform: 'none',
+              fontSize: '16px',
+              '&:hover': {
+                backgroundColor: '#cc0000',
+              },
+            }}
+          >
+            Upload your files
+
+            <VisuallyHiddenInput
+              type="file"
+              accept=".mp3,audio/mpeg"
+              onChange={handleFileChange}
+            />
+          </Button>
+        </Box>
+
        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <span
             style={{
@@ -121,9 +150,12 @@ export default function App() {
           >
             Удалить фоновый шум
           </span>
-         <Checkbox />
+         <Checkbox
+            checked={removeNoise}
+            onChange={(event) => setRemoveNoise(event.target.checked)}
+          />
         </Box>
-    
+        <SpectrogramView file={selectedFile} />
     </Box>
   );
 }
