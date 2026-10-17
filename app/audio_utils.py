@@ -6,6 +6,7 @@ import numpy as np
 
 def preprocess_audio(file_path: str, target_sample_rate: int = 16000, target_duration_sec: float = 3.0) -> torch.Tensor:
     data, sample_rate = librosa.load(file_path, sr=None)
+    sample_rate = int(sample_rate)
 
     if len(data.shape) > 1:
         data = np.mean(data, axis=0)
