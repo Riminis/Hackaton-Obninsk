@@ -688,26 +688,6 @@ export default function App() {
                 Длительность: {audioDuration.toFixed(2)} сек.
               </p>
             )}
-
-            {removeNoise && (
-              <Box sx={{ mt: 2 }}>
-                <h4>Запись после удаления шума</h4>
-
-                {processedAudioUrl ? (
-                  <audio
-                    controls
-                    preload="metadata"
-                    src={processedAudioUrl}
-                    style={{ width: '100%' }}
-                  />
-                ) : (
-                  <p>
-                    Обработанная запись появится после получения
-                    результата от сервера.
-                  </p>
-                )}
-              </Box>
-            )}
           </Box>
         )}
                    
@@ -771,17 +751,6 @@ export default function App() {
                 border: '1px solid #eeeeee',
               }}
             >
-              <Typography
-                variant="overline"
-                sx={{
-                  color: '#777',
-                  letterSpacing: '1.5px',
-                  fontWeight: 600,
-                }}
-              >
-                РЕЗУЛЬТАТ АНАЛИЗА
-              </Typography>
-
               <Typography
                 variant="h5"
                 sx={{
@@ -927,37 +896,13 @@ export default function App() {
                         )}
                       </Box>
                     </Box>
-
-                    <Box
-                      sx={{
-                        p: 2,
-                        display: 'flex',
-                        flexDirection: { xs: 'column', sm: 'row' },
-                        justifyContent: 'space-between',
-                        gap: 1,
-                      }}
-                    >
-                      <Typography variant="body2" color="text.secondary">
-                        Класс модели: {rawClass}
-                      </Typography>
-
-                      {selectedFile && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ overflowWrap: 'anywhere' }}
-                        >
-                          Файл: {selectedFile.name}
-                        </Typography>
-                      )}
-                    </Box>
                   </Box>
                 );
               })()}
             </Box>
           )}
 
-      </Box>
+        </Box>
           <Box
             component="footer"
             sx={{
