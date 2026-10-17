@@ -47,14 +47,14 @@ export default function App() {
     const [removeNoise, setRemoveNoise] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
 
-    // Безопасное определение длительности аудио
+    // Инструментированная функция getAudioDuration с дебагом
     const getAudioDuration = (file) =>
       new Promise((resolve) => {
-        // Если это запись с микрофона, мы знаем её примерную длительность (ограничена таймером)
-        if (file.name === 'recording.webm') {
-          resolve(2.5); // безопасное дефолтное значение для проверки
-          return;
-        }
+        console.log('[DEBUG] getAudioDuration вызван для файла:', {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
 
         const audio = new Audio();
         const url = URL.createObjectURL(file);
@@ -63,21 +63,22 @@ export default function App() {
 
         audio.onloadedmetadata = () => {
           const duration = audio.duration;
+          console.log('[DEBUG] onloadedmetadata сработал. audio.duration =', duration);
           URL.revokeObjectURL(url);
 
           if (!Number.isFinite(duration) || isNaN(duration)) {
-            // Если браузер не смог прочитать длительность, разрешаем пропустить проверку
-            resolve(1.0);
+            console.warn('[DEBUG] duration невалиден (NaN или Infinity). Пропускаем.');
+            resolve(1.0); // временный fallback для теста
             return;
           }
 
           resolve(duration);
         };
 
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+          console.error('[DEBUG] audio.onerror сработал:', e);
           URL.revokeObjectURL(url);
-          // В случае ошибки чтения тегом audio не блокируем пользователя, бэкенд проверит точно
-          resolve(1.0);
+          resolve(1.0); // временный fallback чтобы не падало
         };
 
         audio.src = url;
@@ -109,6 +110,7 @@ export default function App() {
     const uploadAudio = async (file) => {
       if (!file) return;
 
+      console.log('[DEBUG] uploadAudio запущен для файла:', file);
       setPrediction(null);
       setPredictionError('');
 
@@ -119,6 +121,7 @@ export default function App() {
 
       // Проверка размера файла
       if (file.size > MAX_FILE_SIZE) {
+        console.error('[DEBUG] Ошибка: файл слишком большой:', file.size);
         setPredictionError('Максимальный размер файла — 1 МБ.');
         return;
       }
@@ -127,11 +130,14 @@ export default function App() {
       let duration;
       try {
         duration = await getAudioDuration(file);
+        console.log('[DEBUG] Определена длительность:', duration);
       } catch (error) {
-        duration = 1.0; // fallback
+        console.error('[DEBUG] Ошибка в getAudioDuration:', error);
+        duration = 1.0;
       }
 
       if (duration >= MAX_AUDIO_DURATION) {
+        console.error('[DEBUG] Ошибка: превышена длительность:', duration);
         setPredictionError(
           'Длительность аудио должна быть меньше 5 секунд.'
         );
@@ -147,18 +153,24 @@ export default function App() {
         formData.append('file', file);
         formData.append('remove_noise', String(removeNoise));
 
+        console.log('[DEBUG] Отправка запроса на /api/predict...');
         const response = await fetch('/api/predict', {
           method: 'POST',
           body: formData,
         });
 
+        console.log('[DEBUG] Статус ответа сервера:', response.status);
         const responseText = await response.text();
-        let data;
+        console.log('[DEBUG] Текст ответа сервера:', responseText);
 
+        let data;
         try {
           data = JSON.parse(responseText);
-        } catch {
-          throw new Error('Сервер вернул ответ не в формате JSON');
+        } catch (jsonErr) {
+          console.error('[DEBUG] Не удалось распарсить JSON из ответа:', responseText);
+          throw new Error(
+            'Сервер вернул ответ не в формате JSON'
+          );
         }
 
         if (!response.ok) {
@@ -182,10 +194,10 @@ export default function App() {
           setProcessedAudioUrl(URL.createObjectURL(blob));
         }
 
-        console.log('Ответ сервера:', data);
+        console.log('[DEBUG] Успешный ответ:', data);
         setPrediction(data);
       } catch (error) {
-        console.error('Ошибка распознавания:', error);
+        console.error('[DEBUG] Ошибка в блоке catch uploadAudio:', error);
         setPredictionError(
           error.message || 'Не удалось распознать звук'
         );
@@ -202,7 +214,9 @@ export default function App() {
 
         streamRef.current = stream;
 
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        const mimeType = MediaRecorder.isTypeSupported(
+          'audio/webm;codecs=opus'
+        )
           ? 'audio/webm;codecs=opus'
           : 'audio/webm';
 
@@ -219,6 +233,7 @@ export default function App() {
           clearTimeout(recordingTimerRef.current);
 
           const blob = new Blob(chunks, { type: recorder.mimeType });
+
           const recordedFile = new File(
             [blob],
             'recording.webm',
@@ -262,10 +277,13 @@ export default function App() {
 
     const handleFileChange = async (event) => {
       const file = event.target.files?.[0];
+
+      // Позволяет повторно выбрать тот же файл
       event.target.value = '';
 
       if (!file) return;
 
+      // Очищаем предыдущий результат при каждом новом выборе
       setPrediction(null);
       setPredictionError('');
       setAudioDuration(null);
@@ -282,8 +300,9 @@ export default function App() {
 
       setSelectedFile(null);
 
+      // Проверяем размер: максимум 1 МБ
       if (file.size > MAX_FILE_SIZE) {
-        setPredictionError('Файл слишком большой. Максимальный размер — 1 МБ.');
+        setPredictionError('Максимальный размер файла — 1 МБ.');
         return;
       }
 
@@ -592,6 +611,7 @@ export default function App() {
 
               <Box sx={{ mb: 2 }}>
                 <div>Исходная запись: {selectedFile.name}</div>
+
                 <audio
                   controls
                   preload="metadata"
@@ -609,6 +629,7 @@ export default function App() {
               {removeNoise && (
                 <Box sx={{ mt: 2 }}>
                   <h4>Запись после удаления шума</h4>
+
                   {processedAudioUrl ? (
                     <audio
                       controls
@@ -651,16 +672,17 @@ export default function App() {
                   <span className="result-eyebrow">РЕЗУЛЬТАТ АНАЛИЗА</span>
                   <h2>Материал определён</h2>
                 </div>
+
                 <span className="result-check">✓</span>
               </div>
 
               <div className="material-result">
                 <div className="material-symbol">
                   {String(
-                    prediction.predicted_class ??
-                    prediction.material ??
-                    prediction.label ??
-                    prediction.prediction
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                   ).toLowerCase().includes("wood")
                     ? "🪵"
                     : "🔩"}
@@ -668,22 +690,24 @@ export default function App() {
 
                 <div>
                   <span className="material-caption">Предполагаемый материал</span>
+
                   <h1>
                     {(() => {
                       const material = String(
-                        prediction.predicted_class ??
-                        prediction.material ??
-                        prediction.label ??
-                        prediction.prediction
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                       ).toLowerCase();
 
                       if (material.includes("wood")) return "Дерево";
                       if (material.includes("metal")) return "Металл";
 
                       return prediction.material ??
-                        prediction.predicted_class ??
-                        prediction.label ??
-                        prediction.prediction;
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                     })()}
                   </h1>
 
