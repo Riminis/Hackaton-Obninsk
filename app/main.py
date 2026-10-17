@@ -4,11 +4,21 @@ import datetime
 import joblib
 import librosa
 from fastapi import FastAPI, UploadFile, File, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.audio_utils import preprocess_audio, extract_features
-from app.database import SessionLocal, init_db, PredictionRecord
+from app.database import SessionLocal, init_db
+from app.models import VisitLog, PredictionLog
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -29,27 +39,43 @@ def get_db():
     finally:
         db.close()
 
+@app.middleware("http")
+async def log_visits(request: Request, call_next):
+    db = SessionLocal()
+    try:
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        visit = VisitLog(ip_address=client_ip)
+        db.add(visit)
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+    
+    response = await call_next(request)
+    return response
+
 @app.post("/api/predict")
 async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     filename = file.filename or "audio.mp3"
     file_location = os.path.join(UPLOAD_DIR, filename)
     with open(file_location, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
     y_data, sr = librosa.load(file_location, sr=None)
     duration = float(len(y_data) / sr)
-    
+
     waveform = preprocess_audio(file_location)
     features = extract_features(waveform).numpy().reshape(1, -1)
-    
+
     pred_idx = model.predict(features)[0]
     probabilities = model.predict_proba(features)[0]
     confidence = float(probabilities[pred_idx])
     predicted_class = classes[pred_idx]
-    
+
     client_ip = request.client.host if request.client else "127.0.0.1"
-    
-    record = PredictionRecord(
+
+    record = PredictionLog(
         ip_address=client_ip,
         timestamp=datetime.datetime.utcnow(),
         predicted_class=predicted_class,
@@ -60,7 +86,7 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
     db.add(record)
     db.commit()
     db.refresh(record)
-    
+
     return {
         "predicted_class": predicted_class,
         "confidence": confidence,
