@@ -33,6 +33,7 @@ const footerLinkSx = {
 };
 
 export default function App() {
+    const [recordingSubmitted, setRecordingSubmitted] = useState(false);
     const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
     const MAX_FILE_SIZE = 1024 * 1024; // 1 МБ
     const MAX_AUDIO_DURATION = 5; // строго меньше 5 секунд
@@ -94,77 +95,121 @@ export default function App() {
       };
     }, [processedAudioUrl]);
     
+      
     const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-
-      streamRef.current = stream;
-
-      const mimeType = MediaRecorder.isTypeSupported(
-        'audio/webm;codecs=opus'
-      )
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error(
+            'Браузер не поддерживает запись или сайт открыт не через HTTPS/localhost.'
+          );
         }
-      };
 
-      recorder.onstop = () => {
-        clearTimeout(recordingTimerRef.current);
-
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-
-        const recordedFile = new File(
-          [blob],
-          'recording.webm',
-          { type: recorder.mimeType }
-        );
-
-        setSelectedFile(recordedFile);
+        setRecordingSubmitted(false);
         setPrediction(null);
         setPredictionError('');
         setAudioDuration(null);
 
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-      };
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
 
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
+        streamRef.current = stream;
 
-      recordingTimerRef.current = setTimeout(() => {
-        if (recorder.state === 'recording') {
-          recorder.stop();
-          setIsRecording(false);
+        let mimeType = '';
+
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else {
+          mimeType = '';
         }
-      }, MAX_RECORDING_DURATION);
-    } catch (error) {
-      console.error('Ошибка микрофона:', error);
-      alert('Не удалось включить микрофон. Проверь разрешения браузера.');
-    }
-  };
+
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
+
+        const chunks = [];
+
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+
+        recorder.onerror = (event) => {
+          console.error('Ошибка MediaRecorder:', event.error);
+          setPredictionError('Ошибка во время записи звука.');
+        };
+
+        recorder.onstop = () => {
+          clearTimeout(recordingTimerRef.current);
+
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || 'audio/webm',
+          });
+
+          if (blob.size === 0) {
+            setPredictionError('Запись пустая. Попробуй записать звук ещё раз.');
+          } else {
+            const recordedFile = new File(
+              [blob],
+              'recording.webm',
+              { type: blob.type }
+            );
+
+            setRecordingSubmitted(false);
+            setSelectedFile(recordedFile);
+            setPrediction(null);
+            setAudioDuration(null);
+          }
+
+          stream.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+          mediaRecorderRef.current = null;
+          setIsRecording(false);
+        };
+
+        mediaRecorderRef.current = recorder;
+        recorder.start();
+        setIsRecording(true);
+
+        recordingTimerRef.current = setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }, MAX_RECORDING_DURATION);
+
+      } catch (error) {
+        console.error('Ошибка запуска микрофона:', error);
+
+        setIsRecording(false);
+        setPredictionError(
+          error.name === 'NotAllowedError'
+            ? 'Нет доступа к микрофону. Разреши использование микрофона в браузере.'
+            : error.message || 'Не удалось запустить запись.'
+        );
+
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+
+        mediaRecorderRef.current = null;
+      }
+    };
 
   const stopRecording = () => {
-    clearTimeout(recordingTimerRef.current);
+      clearTimeout(recordingTimerRef.current);
 
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
+      const recorder = mediaRecorderRef.current;
 
-    setIsRecording(false);
-  };
-            
+      if (recorder && recorder.state === 'recording') {
+        recorder.stop();
+      }
 
+      setIsRecording(false);
+    };
   const uploadAudio = async (file) => {
     if (!file) return;
 
@@ -210,6 +255,12 @@ export default function App() {
       formData.append('file', file);
       formData.append('remove_noise', String(removeNoise));
 
+      console.log('Отправляем файл:', {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
       const response = await fetch('/api/predict', {
         method: 'POST',
         body: formData,
@@ -217,38 +268,30 @@ export default function App() {
 
       const responseText = await response.text();
 
+      console.log('HTTP статус:', response.status);
+      console.log('Ответ сервера:', responseText);
+
       let data;
 
       try {
         data = JSON.parse(responseText);
       } catch {
-        throw new Error(
-          'Сервер вернул ответ не в формате JSON'
-        );
+        throw new Error('Сервер вернул ответ не в формате JSON');
       }
 
       if (!response.ok) {
         throw new Error(
-          data.detail || `Ошибка сервера: HTTP ${response.status}`
+          data?.detail ||
+          `Ошибка сервера: HTTP ${response.status}`
         );
       }
 
-      // Получение обработанного аудио от сервера
-      if (data.processed_audio_base64) {
-        const binary = atob(data.processed_audio_base64);
-        const bytes = Uint8Array.from(
-          binary,
-          (char) => char.charCodeAt(0)
+      if (!data || typeof data !== 'object') {
+        throw new Error(
+          `Сервер вернул ${JSON.stringify(data)} вместо результата.`
         );
-
-        const blob = new Blob([bytes], {
-          type: data.processed_audio_mime_type || 'audio/wav',
-        });
-
-        setProcessedAudioUrl(URL.createObjectURL(blob));
       }
 
-      console.log('Ответ сервера:', data);
       setPrediction(data);
     } catch (error) {
       console.error('Ошибка распознавания:', error);
@@ -273,7 +316,7 @@ export default function App() {
     setPrediction(null);
     setPredictionError('');
     setAudioDuration(null);
-
+    setRecordingSubmitted(false);
     if (processedAudioUrl) {
       URL.revokeObjectURL(processedAudioUrl);
       setProcessedAudioUrl(null);
@@ -556,14 +599,22 @@ export default function App() {
               </Button>
             )}
 
-            {selectedFile?.name === 'recording.webm' && (
-              <Button
-                variant="outlined"
-                onClick={() => uploadAudio(selectedFile)}
-              >
-                Отправить запись
-              </Button>
+            
+            {selectedFile?.name === 'recording.webm' &&
+              !isRecording &&
+              !recordingSubmitted &&
+              !isPredicting && (
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setRecordingSubmitted(true);
+                    uploadAudio(selectedFile);
+                  }}
+                >
+                  Отправить запись
+                </Button>
             )}
+
             <Typography
                 variant="body2"
                 color="text.secondary"
