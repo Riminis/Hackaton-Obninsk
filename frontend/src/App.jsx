@@ -248,6 +248,7 @@ export default function App() {
         setProcessedAudioUrl(URL.createObjectURL(blob));
       }
 
+      console.log('Ответ сервера:', data);
       setPrediction(data);
     } catch (error) {
       console.error('Ошибка распознавания:', error);
@@ -672,10 +673,10 @@ export default function App() {
               <div className="material-result">
                 <div className="material-symbol">
                   {String(
-                    prediction.material ??
-                    prediction.label ??
-                    prediction.prediction ??
-                    ""
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                   ).toLowerCase().includes("wood")
                     ? "🪵"
                     : "🔩"}
@@ -687,28 +688,29 @@ export default function App() {
                   <h1>
                     {(() => {
                       const material = String(
-                        prediction.material ??
-                        prediction.label ??
-                        prediction.prediction ??
-                        "Неизвестно"
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                       ).toLowerCase();
 
                       if (material.includes("wood")) return "Дерево";
                       if (material.includes("metal")) return "Металл";
 
                       return prediction.material ??
-                        prediction.label ??
-                        prediction.prediction ??
-                        "Неизвестно";
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
                     })()}
                   </h1>
 
                   <span className="material-class">
                     Класс модели: {
-                      prediction.class_name ??
+                      prediction.predicted_class ??
+                      prediction.material ??
                       prediction.label ??
-                      prediction.prediction ??
-                      "—"
+                      prediction.prediction
                     }
                   </span>
                 </div>
