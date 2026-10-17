@@ -124,6 +124,15 @@ async def predict(
             "denoised_audio_url": processed_url,
             "processed_file": processed_url,
             "audio_url": processed_url,
+            "processed_audio_url": processed_url,
+            "denoised_url": processed_url,
+            "processed_audio": processed_url,
+            "audio": processed_url,
+            "url": processed_url,
+            "file_url": processed_url,
+            "clean_audio": processed_url,
+            "clean_audio_url": processed_url,
+            "result_audio": processed_url,
         }
 
     except ValueError as err:
