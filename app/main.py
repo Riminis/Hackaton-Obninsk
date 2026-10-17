@@ -1,71 +1,109 @@
 import os
 import shutil
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from contextlib import asynccontextmanager
 import joblib
-from fastapi import Depends, FastAPI, File, Request, UploadFile
-from fastapi.responses import FileResponse
+import librosa
+from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import Base, engine, get_db
-from app.models import PredictionLog, VisitLog
+from sqlalchemy.orm import Session
 from app.audio_utils import preprocess_audio, extract_features
+from app.database import SessionLocal, init_db
+from app.models import VisitLog, PredictionLog
 
-app = FastAPI(title="Hackaton Obninsk API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
 
-ml_model = None
-classes_list = []
+app = FastAPI(lifespan=lifespan)
 
-@app.on_event("startup")
-async def startup():
-    global ml_model, classes_list
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    if os.path.exists("model.joblib"):
-        saved_data = joblib.load("model.joblib")
-        ml_model = saved_data["model"]
-        classes_list = saved_data["classes"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
-app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.get("/")
-async def serve_frontend(request: Request, db: AsyncSession = Depends(get_db)):
-    client_ip = request.client.host if request.client else "unknown"
-    new_visit = VisitLog(ip_address=client_ip)
-    db.add(new_visit)
-    await db.commit()
-    
-    return FileResponse("frontend/dist/index.html")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-@app.get("/api/ping")
-async def ping_db(db: AsyncSession = Depends(get_db)):
-    return {"db_connection": "success"}
+MODEL_PATH = "model.joblib"
+model_data = joblib.load(MODEL_PATH)
+model = model_data["model"]
+classes = model_data["classes"]
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.middleware("http")
+async def log_visits(request: Request, call_next):
+    db = SessionLocal()
+    try:
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        visit = VisitLog(ip_address=client_ip)
+        db.add(visit)
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    response = await call_next(request)
+    return response
 
 @app.post("/api/predict")
-async def predict_audio(
-    file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
-):
-    temp_file_path = f"temp_{file.filename}"
-    with open(temp_file_path, "wb") as buffer:
+async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    original_name = file.filename or "audio.mp3"
+    file_ext = Path(original_name).suffix
+    if not file_ext:
+        file_ext = ".mp3"
+
+    unique_filename = f"{uuid.uuid4().hex}_{original_name}"
+    if not unique_filename.endswith(file_ext):
+        unique_filename += file_ext
+
+    file_location = os.path.join(UPLOAD_DIR, unique_filename)
+
+    with open(file_location, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
     try:
-        waveform = preprocess_audio(temp_file_path)
-        features = extract_features(waveform)
-        
-        if ml_model is not None:
-            prediction_idx = ml_model.predict([features.numpy()])[0]
-            prediction_result = classes_list[prediction_idx]
-        else:
-            prediction_result = "Модель не загружена"
-    finally:
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+        y_data, sr = librosa.load(file_location, sr=None)
+        duration = float(len(y_data) / sr)
 
-    prediction_log = PredictionLog(
-        filename=file.filename or "unknown", result=prediction_result
+        waveform = preprocess_audio(file_location)
+        features = extract_features(waveform).numpy().reshape(1, -1)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except Exception as err:
+        raise HTTPException(status_code=500, detail="Ошибка обработки аудиофайла.")
+
+    pred_idx = model.predict(features)[0]
+    probabilities = model.predict_proba(features)[0]
+    confidence = float(probabilities[pred_idx])
+    predicted_class = classes[pred_idx]
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+
+    record = PredictionLog(
+        ip_address=client_ip,
+        timestamp=datetime.now(timezone.utc),
+        predicted_class=predicted_class,
+        duration=duration,
+        confidence=confidence,
+        filename=unique_filename
     )
-    db.add(prediction_log)
-    await db.commit()
-
-    return {"filename": file.filename, "prediction": prediction_result}
+    db.add(record)
+    db.commit()
+    db.refresh(record)
