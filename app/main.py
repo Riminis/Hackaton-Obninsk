@@ -1,16 +1,22 @@
 import os
 import shutil
-import datetime
+from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 import joblib
 import librosa
-from fastapi import FastAPI, UploadFile, File, Request, Depends
+from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.audio_utils import preprocess_audio, extract_features
 from app.database import SessionLocal, init_db
 from app.models import VisitLog, PredictionLog
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,10 +33,6 @@ MODEL_PATH = "model.joblib"
 model_data = joblib.load(MODEL_PATH)
 model = model_data["model"]
 classes = model_data["classes"]
-
-@app.on_event("startup")
-def startup_event():
-    init_db()
 
 def get_db():
     db = SessionLocal()
@@ -51,7 +53,7 @@ async def log_visits(request: Request, call_next):
         pass
     finally:
         db.close()
-    
+
     response = await call_next(request)
     return response
 
@@ -59,14 +61,20 @@ async def log_visits(request: Request, call_next):
 async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     filename = file.filename or "audio.mp3"
     file_location = os.path.join(UPLOAD_DIR, filename)
+    
     with open(file_location, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    y_data, sr = librosa.load(file_location, sr=None)
-    duration = float(len(y_data) / sr)
+    try:
+        y_data, sr = librosa.load(file_location, sr=None)
+        duration = float(len(y_data) / sr)
 
-    waveform = preprocess_audio(file_location)
-    features = extract_features(waveform).numpy().reshape(1, -1)
+        waveform = preprocess_audio(file_location)
+        features = extract_features(waveform).numpy().reshape(1, -1)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except Exception as err:
+        raise HTTPException(status_code=500, detail="Ошибка обработки аудиофайла.")
 
     pred_idx = model.predict(features)[0]
     probabilities = model.predict_proba(features)[0]
@@ -77,7 +85,7 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
 
     record = PredictionLog(
         ip_address=client_ip,
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         predicted_class=predicted_class,
         duration=duration,
         confidence=confidence,
