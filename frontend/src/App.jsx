@@ -37,7 +37,7 @@ export default function App() {
     const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
     const MAX_FILE_SIZE = 1024 * 1024; // 1 МБ
     const MAX_AUDIO_DURATION = 5; // строго меньше 5 секунд
-    const MAX_RECORDING_DURATION = 5000; // 5 секунд
+    const MAX_RECORDING_DURATION = 4990; // 5 секунд
     const recordingTimerRef = useRef(null);
     const recordingStartTimeRef = useRef(null);
     const [processedAudioUrl, setProcessedAudioUrl] = useState(null);
