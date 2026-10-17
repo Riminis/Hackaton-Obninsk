@@ -39,6 +39,7 @@ export default function App() {
     const MAX_AUDIO_DURATION = 5; // строго меньше 5 секунд
     const MAX_RECORDING_DURATION = 5000; // 5 секунд
     const recordingTimerRef = useRef(null);
+    const recordingStartTimeRef = useRef(null);
     const [processedAudioUrl, setProcessedAudioUrl] = useState(null);
     const [audioDuration, setAudioDuration] = useState(null);
     const [isRecording, setIsRecording] = useState(false);
@@ -142,12 +143,21 @@ export default function App() {
           setPredictionError('Ошибка во время записи звука.');
         };
 
+        
         recorder.onstop = () => {
           clearTimeout(recordingTimerRef.current);
+
+          const duration = recordingStartTimeRef.current == null
+            ? 0
+            : (performance.now() - recordingStartTimeRef.current) / 1000;
 
           const blob = new Blob(chunks, {
             type: recorder.mimeType || 'audio/webm',
           });
+
+          console.log('Длительность записи:', duration);
+          console.log('Размер записи:', blob.size);
+          console.log('Тип файла:', blob.type);
 
           if (blob.size === 0) {
             setPredictionError('Запись пустая. Попробуй записать звук ещё раз.');
@@ -160,8 +170,8 @@ export default function App() {
 
             setRecordingSubmitted(false);
             setSelectedFile(recordedFile);
+            setAudioDuration(duration);
             setPrediction(null);
-            setAudioDuration(null);
           }
 
           stream.getTracks().forEach((track) => track.stop());
@@ -170,9 +180,16 @@ export default function App() {
           setIsRecording(false);
         };
 
+
         mediaRecorderRef.current = recorder;
+
+        recordingStartTimeRef.current = performance.now();
+
         recorder.start();
         setIsRecording(true);
+
+        console.log('Запись началась');
+        console.log('Формат записи:', recorder.mimeType);
 
         recordingTimerRef.current = setTimeout(() => {
           if (recorder.state === 'recording') {
@@ -210,7 +227,7 @@ export default function App() {
 
       setIsRecording(false);
     };
-  const uploadAudio = async (file) => {
+  const uploadAudio = async (file, knownDuration = null) => {
     if (!file) return;
 
     setPrediction(null);
@@ -228,17 +245,18 @@ export default function App() {
     }
 
     // Проверка длительности
-    let duration;
+    let duration = knownDuration;
 
-    try {
-      duration = await getAudioDuration(file);
-    } catch (error) {
-      setPredictionError(
-        error.message || 'Не удалось прочитать аудиофайл'
-      );
-      return;
+    if (duration === null) {
+      try {
+        duration = await getAudioDuration(file);
+      } catch (error) {
+        setPredictionError(
+          error.message || 'Не удалось прочитать аудиофайл'
+        );
+        return;
+      }
     }
-
     if (duration >= MAX_AUDIO_DURATION) {
       setPredictionError(
         'Длительность аудио должна быть меньше 5 секунд.'
@@ -606,10 +624,10 @@ export default function App() {
               !isPredicting && (
                 <Button
                   variant="outlined"
-                  onClick={() => {
-                    setRecordingSubmitted(true);
-                    uploadAudio(selectedFile);
-                  }}
+                onClick={() => {
+                  setRecordingSubmitted(true);
+                  uploadAudio(selectedFile, audioDuration);
+                }}
                 >
                   Отправить запись
                 </Button>
@@ -827,16 +845,16 @@ export default function App() {
             </div>
           )}
       </Box>
-<Box
-  component="footer"
-  sx={{
-    mt: 'auto',
-    width: '100%',
-    py: 3,
-    textAlign: 'center',
-  }}
->
-   <Box
+          <Box
+            component="footer"
+            sx={{
+              mt: 'auto',
+              width: '100%',
+              py: 3,
+              textAlign: 'center',
+            }}
+          >
+        <Box
             sx={{
               maxWidth: 1000,
               mx: 'auto',
