@@ -110,9 +110,9 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
 
     return {
         "predicted_class": predicted_class,
+        "confidence": confidence,
         "material": predicted_class,
         "label": predicted_class,
         "prediction": predicted_class,
-        "confidence": confidence,
         "probability": confidence,
     }
