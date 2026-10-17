@@ -361,9 +361,8 @@ export default function App() {
 
       <Box
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
+          colorScheme: 'light',
+          color: '#222222',
           minHeight: '100vh',
           width: '100%',
           boxSizing: 'border-box',
@@ -943,20 +942,20 @@ export default function App() {
             >
               <Box
                 component="a"
-                href="https://t.me/your_username"
+                href="https://t.me/CharlottaWo"
                 target="_blank"
                 rel="noopener noreferrer"
                 sx={footerLinkSx}
               >
-                Telegram
+                Telegram Frontend
               </Box>
 
               <Box
                 component="a"
-                href="mailto:your-email@example.com"
+                href="https//t.me/Riminis"
                 sx={footerLinkSx}
               >
-                Почта
+                Telegram Backend
               </Box>
             </Box>
           </Box>
