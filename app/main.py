@@ -1,11 +1,14 @@
 import os
 import shutil
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from contextlib import asynccontextmanager
 import joblib
 import librosa
 from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from app.audio_utils import preprocess_audio, extract_features
 from app.database import SessionLocal, init_db
@@ -28,6 +31,8 @@ app.add_middleware(
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 MODEL_PATH = "model.joblib"
 model_data = joblib.load(MODEL_PATH)
@@ -59,9 +64,17 @@ async def log_visits(request: Request, call_next):
 
 @app.post("/api/predict")
 async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    filename = file.filename or "audio.mp3"
-    file_location = os.path.join(UPLOAD_DIR, filename)
-    
+    original_name = file.filename or "audio.mp3"
+    file_ext = Path(original_name).suffix
+    if not file_ext:
+        file_ext = ".mp3"
+
+    unique_filename = f"{uuid.uuid4().hex}_{original_name}"
+    if not unique_filename.endswith(file_ext):
+        unique_filename += file_ext
+
+    file_location = os.path.join(UPLOAD_DIR, unique_filename)
+
     with open(file_location, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -89,15 +102,8 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
         predicted_class=predicted_class,
         duration=duration,
         confidence=confidence,
-        filename=filename
+        filename=unique_filename
     )
     db.add(record)
     db.commit()
     db.refresh(record)
-
-    return {
-        "predicted_class": predicted_class,
-        "confidence": confidence,
-        "duration": duration,
-        "filename": filename
-    }
