@@ -10,7 +10,7 @@ from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from app.audio_utils import preprocess_audio, extract_features
+from app.audio_utils import preprocess_audio, extract_features, process_audio_file
 from app.database import SessionLocal, init_db
 from app.models import VisitLog, PredictionLog
 
@@ -84,7 +84,10 @@ async def predict(
         with open(file_location, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        y_data, sr = librosa.load(file_location, sr=None)
+        processed_filename = f"denoised_{uuid.uuid4().hex}.wav"
+        processed_location = os.path.join(UPLOAD_DIR, processed_filename)
+
+        y_data, sr = process_audio_file(file_location, processed_location, apply_denoise=denoise)
         duration = float(len(y_data) / sr)
 
         waveform = preprocess_audio(file_location, apply_denoise=denoise)
@@ -108,6 +111,9 @@ async def predict(
         db.commit()
         db.refresh(record)
 
+        base_url = str(request.base_url).rstrip("/")
+        processed_url = f"{base_url}/uploads/{processed_filename}"
+
         return {
             "predicted_class": predicted_class,
             "confidence": confidence,
@@ -115,6 +121,9 @@ async def predict(
             "label": predicted_class,
             "prediction": predicted_class,
             "probability": confidence,
+            "denoised_audio_url": processed_url,
+            "processed_file": processed_url,
+            "audio_url": processed_url,
         }
 
     except ValueError as err:

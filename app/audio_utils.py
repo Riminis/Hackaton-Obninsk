@@ -16,6 +16,23 @@ def apply_highpass_filter(audio_data, sample_rate, cutoff=100.0):
     filtered = sosfilt(sos, audio_data)
     return np.ascontiguousarray(filtered)
 
+def process_audio_file(file_path: str, output_path: str, min_rms: float = 0.005, apply_denoise: bool = True):
+    data, sample_rate = librosa.load(file_path, sr=None)
+    sample_rate = int(sample_rate)
+
+    if len(data.shape) > 1:
+        data = np.mean(data, axis=0)
+
+    rms = float(np.sqrt(np.mean(data ** 2)))
+    if rms < min_rms:
+        raise ValueError("Запись слишком тихая или содержит только фоновый шум.")
+
+    if apply_denoise:
+        data = apply_highpass_filter(data, sample_rate)
+
+    sf.write(output_path, data, sample_rate)
+    return data, sample_rate
+
 def preprocess_audio(file_path: str, target_sample_rate: int = 16000, target_duration_sec: float = 5.0, min_rms: float = 0.005, apply_denoise: bool = True) -> torch.Tensor:
     data, sample_rate = librosa.load(file_path, sr=None)
     sample_rate = int(sample_rate)
