@@ -64,55 +64,58 @@ async def log_visits(request: Request, call_next):
 
 @app.post("/api/predict")
 async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    original_name = file.filename or "audio.mp3"
-    file_ext = Path(original_name).suffix
-    if not file_ext:
-        file_ext = ".mp3"
-
-    unique_filename = f"{uuid.uuid4().hex}_{original_name}"
-    if not unique_filename.endswith(file_ext):
-        unique_filename += file_ext
-
-    file_location = os.path.join(UPLOAD_DIR, unique_filename)
-
-    with open(file_location, "wb+") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
     try:
+        original_name = file.filename or "audio.mp3"
+        file_ext = Path(original_name).suffix
+        if not file_ext:
+            file_ext = ".mp3"
+
+        unique_filename = f"{uuid.uuid4().hex}_{original_name}"
+        if not unique_filename.endswith(file_ext):
+            unique_filename += file_ext
+
+        file_location = os.path.join(UPLOAD_DIR, unique_filename)
+
+        with open(file_location, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
         y_data, sr = librosa.load(file_location, sr=None)
         duration = float(len(y_data) / sr)
 
         waveform = preprocess_audio(file_location)
         features = extract_features(waveform).numpy().reshape(1, -1)
+
+        pred_idx = model.predict(features)[0]
+        probabilities = model.predict_proba(features)[0]
+        confidence = float(probabilities[pred_idx])
+        predicted_class = classes[pred_idx]
+
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        record = PredictionLog(
+            ip_address=client_ip,
+            timestamp=datetime.now(timezone.utc),
+            predicted_class=predicted_class,
+            duration=duration,
+            confidence=confidence,
+            filename=unique_filename
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        return {
+            "predicted_class": predicted_class,
+            "confidence": confidence,
+            "material": predicted_class,
+            "label": predicted_class,
+            "prediction": predicted_class,
+            "probability": confidence,
+        }
+
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
     except Exception as err:
-        raise HTTPException(status_code=500, detail="Ошибка обработки аудиофайла.")
-
-    pred_idx = model.predict(features)[0]
-    probabilities = model.predict_proba(features)[0]
-    confidence = float(probabilities[pred_idx])
-    predicted_class = classes[pred_idx]
-
-    client_ip = request.client.host if request.client else "127.0.0.1"
-
-    record = PredictionLog(
-        ip_address=client_ip,
-        timestamp=datetime.now(timezone.utc),
-        predicted_class=predicted_class,
-        duration=duration,
-        confidence=confidence,
-        filename=unique_filename
-    )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-
-    return {
-        "predicted_class": predicted_class,
-        "confidence": confidence,
-        "material": predicted_class,
-        "label": predicted_class,
-        "prediction": predicted_class,
-        "probability": confidence,
-    }
+        print(f"ERROR in /api/predict: {str(err)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка обработки: {str(err)}")
