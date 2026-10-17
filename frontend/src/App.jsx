@@ -710,140 +710,253 @@ export default function App() {
             )}
           </Box>
         )}
-                    {isPredicting && (
-            <div className="result-card result-loading">
-              <div className="loader" />
-              <h3>Анализируем звук...</h3>
-              <p>Определяем материал по характеристикам удара</p>
-            </div>
+                   
+          {isPredicting && (
+            <Box
+              sx={{
+                width: 'min(850px, 90%)',
+                mt: 3,
+                mx: 'auto',
+                p: 3,
+                boxSizing: 'border-box',
+                borderRadius: '12px',
+                backgroundColor: '#fff',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                textAlign: 'center',
+              }}
+            >
+              <Typography variant="h6">
+                Анализируем звук...
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Определяем класс объекта по звуковому сигналу
+              </Typography>
+            </Box>
           )}
 
           {predictionError && (
-            <div className="result-card result-error">
-              <span className="result-icon">!</span>
-              <div>
-                <h3>Не удалось распознать звук</h3>
-                <p>{predictionError}</p>
-              </div>
-            </div>
+            <Box
+              sx={{
+                width: 'min(850px, 90%)',
+                mt: 3,
+                mx: 'auto',
+                p: 2.5,
+                boxSizing: 'border-box',
+                borderRadius: '12px',
+                backgroundColor: '#fff',
+                border: '1px solid #ffcaca',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+              }}
+            >
+              <Typography variant="h6" sx={{ color: '#c62828', mb: 1 }}>
+                Не удалось распознать звук
+              </Typography>
+              <Typography color="text.secondary">
+                {predictionError}
+              </Typography>
+            </Box>
           )}
 
           {prediction && (
-            <div className="result-card">
-              <div className="result-heading">
-                <div>
-                  <span className="result-eyebrow">РЕЗУЛЬТАТ АНАЛИЗА</span>
-                  <h2>Материал определён</h2>
-                </div>
-
-                <span className="result-check">✓</span>
-              </div>
-
-              <div className="material-result">
-                <div className="material-symbol">
-                  {String(
-                      prediction.predicted_class ??
-                      prediction.material ??
-                      prediction.label ??
-                      prediction.prediction
-                  ).toLowerCase().includes("wood")
-                    ? "🪵"
-                    : "🔩"}
-                </div>
-
-                <div>
-                  <span className="material-caption">Предполагаемый материал</span>
-
-                  <h1>
-                    {(() => {
-                      const material = String(
-                      prediction.predicted_class ??
-                      prediction.material ??
-                      prediction.label ??
-                      prediction.prediction
-                      ).toLowerCase();
-
-                      if (material.includes("wood")) return "Дерево";
-                      if (material.includes("metal")) return "Металл";
-
-                      return prediction.material ??
-                      prediction.predicted_class ??
-                      prediction.material ??
-                      prediction.label ??
-                      prediction.prediction
-                    })()}
-                  </h1>
-
-                  <span className="material-class">
-                    Класс модели: {
-                      prediction.predicted_class ??
-                      prediction.material ??
-                      prediction.label ??
-                      prediction.prediction
-                    }
-                  </span>
-                </div>
-              </div>
-
-              {(prediction.confidence != null ||
-                prediction.probability != null) && (
-                <div className="confidence-section">
-                  <div className="confidence-label">
-                    <span>Уверенность модели</span>
-                    <strong>
-                      {Math.round(
-                        Number(prediction.confidence ?? prediction.probability) *
-                        (Number(prediction.confidence ?? prediction.probability) <= 1
-                          ? 100
-                          : 1)
-                      )}%
-                    </strong>
-                  </div>
-
-                  <div className="confidence-track">
-                    <div
-                      className="confidence-fill"
-                      style={{
-                        width: `${Math.max(
-                          0,
-                          Math.min(
-                            100,
-                            Number(prediction.confidence ?? prediction.probability) *
-                              (Number(prediction.confidence ?? prediction.probability) <= 1
-                                ? 100
-                                : 1)
-                          )
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selectedFile && (
-                <div className="result-file">
-                  <span className="file-symbol">♫</span>
-                  <div className="result-file-info">
-                    <strong>{selectedFile.name}</strong>
-                    <span>
-                      {(selectedFile.size / 1024).toFixed(1)} KB
-                    </span>
-                  </div>
-                  <span className="file-ready">Обработан</span>
-                </div>
-              )}
-
-              <button
-                className="result-button"
-                onClick={() => {
-                  setPrediction(null);
-                  setPredictionError("");
+            <Box
+              sx={{
+                width: 'min(850px, 90%)',
+                mt: 3,
+                mx: 'auto',
+                p: { xs: 2, sm: 3 },
+                boxSizing: 'border-box',
+                borderRadius: '12px',
+                backgroundColor: '#fff',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
+                border: '1px solid #eeeeee',
+              }}
+            >
+              <Typography
+                variant="overline"
+                sx={{
+                  color: '#777',
+                  letterSpacing: '1.5px',
+                  fontWeight: 600,
                 }}
               >
-                Распознать другой звук
-              </button>
-            </div>
+                РЕЗУЛЬТАТ АНАЛИЗА
+              </Typography>
+
+              <Typography
+                variant="h5"
+                sx={{
+                  fontWeight: 700,
+                  color: '#222',
+                  mb: 2.5,
+                }}
+              >
+                Результат распознавания
+              </Typography>
+
+              {(() => {
+                const rawClass = String(
+                  prediction.predicted_class ??
+                  prediction.material ??
+                  prediction.label ??
+                  prediction.prediction ??
+                  'Не определён'
+                );
+
+                const normalizedClass = rawClass.toLowerCase();
+
+                const displayClass = normalizedClass.includes('wood')
+                  ? 'Дерево'
+                  : normalizedClass.includes('metal')
+                    ? 'Металл'
+                    : rawClass;
+
+                const rawConfidence =
+                  prediction.confidence ?? prediction.probability;
+
+                const confidence = Number(rawConfidence);
+
+                const hasConfidence =
+                  rawConfidence != null && Number.isFinite(confidence);
+
+                const confidencePercent = hasConfidence
+                  ? Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        confidence <= 1 ? confidence * 100 : confidence
+                      )
+                    )
+                  : null;
+
+                return (
+                  <Box
+                    sx={{
+                      width: '100%',
+                      border: '1px solid #e5e5e5',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: {
+                          xs: '1fr',
+                          sm: '1fr 1fr',
+                        },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          p: 2,
+                          backgroundColor: '#fafafa',
+                          borderBottom: '1px solid #e5e5e5',
+                          borderRight: {
+                            xs: 'none',
+                            sm: '1px solid #e5e5e5',
+                          },
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mb: 1 }}
+                        >
+                          Класс объекта
+                        </Typography>
+
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontWeight: 700,
+                            color: '#222',
+                            overflowWrap: 'anywhere',
+                          }}
+                        >
+                          {displayClass}
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          p: 2,
+                          backgroundColor: '#fff',
+                          borderBottom: '1px solid #e5e5e5',
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mb: 1 }}
+                        >
+                          Уверенность модели
+                        </Typography>
+
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontWeight: 700,
+                            color: '#222',
+                          }}
+                        >
+                          {confidencePercent !== null
+                            ? `${confidencePercent.toFixed(1)}%`
+                            : 'Нет данных'}
+                        </Typography>
+
+                        {confidencePercent !== null && (
+                          <Box
+                            sx={{
+                              mt: 1.5,
+                              height: 6,
+                              backgroundColor: '#eeeeee',
+                              borderRadius: 10,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: `${confidencePercent}%`,
+                                height: '100%',
+                                backgroundColor: '#e00000',
+                                borderRadius: 10,
+                                transition: 'width 0.3s ease',
+                              }}
+                            />
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        p: 2,
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        justifyContent: 'space-between',
+                        gap: 1,
+                      }}
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        Класс модели: {rawClass}
+                      </Typography>
+
+                      {selectedFile && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ overflowWrap: 'anywhere' }}
+                        >
+                          Файл: {selectedFile.name}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                );
+              })()}
+            </Box>
           )}
+
       </Box>
           <Box
             component="footer"
