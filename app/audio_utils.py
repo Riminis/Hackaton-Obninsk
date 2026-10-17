@@ -16,7 +16,7 @@ def apply_highpass_filter(audio_data, sample_rate, cutoff=100.0):
     filtered = sosfilt(sos, audio_data)
     return np.ascontiguousarray(filtered)
 
-def preprocess_audio(file_path: str, target_sample_rate: int = 16000, target_duration_sec: float = 3.0, min_rms: float = 0.005) -> torch.Tensor:
+def preprocess_audio(file_path: str, target_sample_rate: int = 16000, target_duration_sec: float = 5.0, min_rms: float = 0.005) -> torch.Tensor:
     data, sample_rate = librosa.load(file_path, sr=None)
     sample_rate = int(sample_rate)
 
