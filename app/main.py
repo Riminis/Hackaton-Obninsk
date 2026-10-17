@@ -6,7 +6,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 import joblib
 import librosa
-from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -63,7 +63,12 @@ async def log_visits(request: Request, call_next):
     return response
 
 @app.post("/api/predict")
-async def predict(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def predict(
+    request: Request, 
+    file: UploadFile = File(...), 
+    denoise: bool = Form(True), 
+    db: Session = Depends(get_db)
+):
     try:
         original_name = file.filename or "audio.mp3"
         file_ext = Path(original_name).suffix
@@ -82,7 +87,7 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
         y_data, sr = librosa.load(file_location, sr=None)
         duration = float(len(y_data) / sr)
 
-        waveform = preprocess_audio(file_location)
+        waveform = preprocess_audio(file_location, apply_denoise=denoise)
         features = extract_features(waveform).numpy().reshape(1, -1)
 
         pred_idx = model.predict(features)[0]
