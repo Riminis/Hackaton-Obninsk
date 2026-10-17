@@ -107,3 +107,12 @@ async def predict(request: Request, file: UploadFile = File(...), db: Session = 
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    return {
+        "predicted_class": predicted_class,
+        "material": predicted_class,
+        "label": predicted_class,
+        "prediction": predicted_class,
+        "confidence": confidence,
+        "probability": confidence,
+    }
