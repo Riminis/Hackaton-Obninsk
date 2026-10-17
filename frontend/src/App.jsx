@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
 import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
 import SpectrogramView from './Spectrogram';
 import Box from '@mui/material/Box';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -7,6 +7,7 @@ import Checkbox from '@mui/material/Checkbox';
 import { styled } from '@mui/material/styles';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
+import { useEffect, useRef, useState } from 'react';
 const VisuallyHiddenInput = styled('input')({
   clipPath: 'inset(50%)',
   height: 1,
@@ -32,6 +33,13 @@ const footerLinkSx = {
 };
 
 export default function App() {
+    const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
+    const MAX_FILE_SIZE = 1024 * 1024; // 1 МБ
+    const MAX_AUDIO_DURATION = 5; // строго меньше 5 секунд
+    const MAX_RECORDING_DURATION = 5000; // 5 секунд
+    const recordingTimerRef = useRef(null);
+    const [processedAudioUrl, setProcessedAudioUrl] = useState(null);
+    const [audioDuration, setAudioDuration] = useState(null);
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef(null);
     const streamRef = useRef(null);
@@ -40,8 +48,53 @@ export default function App() {
     const [predictionError, setPredictionError] = useState("");
     const [removeNoise, setRemoveNoise] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
+    const getAudioDuration = (file) =>
+    new Promise((resolve, reject) => {
+      const audio = new Audio();
+      const url = URL.createObjectURL(file);
+
+      audio.preload = 'metadata';
+
+      audio.onloadedmetadata = () => {
+        const duration = audio.duration;
+        URL.revokeObjectURL(url);
+
+        if (!Number.isFinite(duration)) {
+          reject(new Error('Не удалось определить длительность аудио'));
+          return;
+        }
+
+        resolve(duration);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Не удалось прочитать аудиофайл'));
+      };
+
+      audio.src = url;
+    });
+    useEffect(() => {
+      if (!selectedFile) {
+        setOriginalAudioUrl(null);
+        return;
+      }
+
+      const url = URL.createObjectURL(selectedFile);
+      setOriginalAudioUrl(url);
+
+      return () => URL.revokeObjectURL(url);
+    }, [selectedFile]);
+
+    useEffect(() => {
+      return () => {
+        if (processedAudioUrl) {
+          URL.revokeObjectURL(processedAudioUrl);
+        }
+      };
+    }, [processedAudioUrl]);
     
-      const startRecording = async () => {
+    const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -49,7 +102,9 @@ export default function App() {
 
       streamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      const mimeType = MediaRecorder.isTypeSupported(
+        'audio/webm;codecs=opus'
+      )
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
 
@@ -63,6 +118,8 @@ export default function App() {
       };
 
       recorder.onstop = () => {
+        clearTimeout(recordingTimerRef.current);
+
         const blob = new Blob(chunks, { type: recorder.mimeType });
 
         const recordedFile = new File(
@@ -72,6 +129,9 @@ export default function App() {
         );
 
         setSelectedFile(recordedFile);
+        setPrediction(null);
+        setPredictionError('');
+        setAudioDuration(null);
 
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -81,6 +141,13 @@ export default function App() {
       recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
+
+      recordingTimerRef.current = setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+          setIsRecording(false);
+        }
+      }, MAX_RECORDING_DURATION);
     } catch (error) {
       console.error('Ошибка микрофона:', error);
       alert('Не удалось включить микрофон. Проверь разрешения браузера.');
@@ -88,6 +155,8 @@ export default function App() {
   };
 
   const stopRecording = () => {
+    clearTimeout(recordingTimerRef.current);
+
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
@@ -95,58 +164,136 @@ export default function App() {
     setIsRecording(false);
   };
             
-    const uploadAudio = async (file) => {
-      if (!file) return;
 
-      setSelectedFile(file);
-      setPrediction(null);
-      setPredictionError("");
-      setIsPredicting(true);
+  const uploadAudio = async (file) => {
+    if (!file) return;
+
+    setPrediction(null);
+    setPredictionError('');
+
+    if (processedAudioUrl) {
+      URL.revokeObjectURL(processedAudioUrl);
+      setProcessedAudioUrl(null);
+    }
+
+    // Проверка размера файла
+    if (file.size > MAX_FILE_SIZE) {
+      setPredictionError('Максимальный размер файла — 1 МБ.');
+      return;
+    }
+
+    // Проверка длительности
+    let duration;
+
+    try {
+      duration = await getAudioDuration(file);
+    } catch (error) {
+      setPredictionError(
+        error.message || 'Не удалось прочитать аудиофайл'
+      );
+      return;
+    }
+
+    if (duration >= MAX_AUDIO_DURATION) {
+      setPredictionError(
+        'Длительность аудио должна быть меньше 5 секунд.'
+      );
+      return;
+    }
+
+    setSelectedFile(file);
+    setAudioDuration(duration);
+    setIsPredicting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('remove_noise', String(removeNoise));
+
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const responseText = await response.text();
+
+      let data;
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("remove_noise", String(removeNoise));
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          'Сервер вернул ответ не в формате JSON'
+        );
+      }
 
-        const response = await fetch("/api/predict", {
-          method: "POST",
-          body: formData,
+      if (!response.ok) {
+        throw new Error(
+          data.detail || `Ошибка сервера: HTTP ${response.status}`
+        );
+      }
+
+      // Получение обработанного аудио от сервера
+      if (data.processed_audio_base64) {
+        const binary = atob(data.processed_audio_base64);
+        const bytes = Uint8Array.from(
+          binary,
+          (char) => char.charCodeAt(0)
+        );
+
+        const blob = new Blob([bytes], {
+          type: data.processed_audio_mime_type || 'audio/wav',
         });
 
-        const responseText = await response.text();
-
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          throw new Error("Сервер вернул ответ не в формате JSON");
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            data.detail || `Ошибка сервера: HTTP ${response.status}`
-          );
-        }
-
-        console.log("Ответ сервера:", data);
-        setPrediction(data);
-      } catch (error) {
-        console.error("Ошибка распознавания:", error);
-        setPredictionError(error.message || "Не удалось распознать звук");
-      } finally {
-        setIsPredicting(false);
+        setProcessedAudioUrl(URL.createObjectURL(blob));
       }
-    };
 
-    const handleFileChange = (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
+      setPrediction(data);
+    } catch (error) {
+      console.error('Ошибка распознавания:', error);
+      setPredictionError(
+        error.message || 'Не удалось распознать звук'
+      );
+    } finally {
+      setIsPredicting(false);
+    }
+  };
 
-      uploadAudio(file);
+   
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0];
 
-      // Позволяет выбрать тот же файл повторно
-      event.target.value = "";
-    };
+    // Позволяет повторно выбрать тот же файл
+    event.target.value = '';
+
+    if (!file) return;
+
+    // Очищаем предыдущий результат при каждом новом выборе
+    setPrediction(null);
+    setPredictionError('');
+    setAudioDuration(null);
+
+    if (processedAudioUrl) {
+      URL.revokeObjectURL(processedAudioUrl);
+      setProcessedAudioUrl(null);
+    }
+
+    if (originalAudioUrl) {
+      URL.revokeObjectURL(originalAudioUrl);
+      setOriginalAudioUrl(null);
+    }
+
+    setSelectedFile(null);
+
+    // Проверяем размер: максимум 1 МБ
+    if (file.size > 1 * 1024 * 1024) {
+      setPredictionError('Файл слишком большой. Максимальный размер — 1 МБ.');
+      return;
+    }
+
+    await uploadAudio(file);
+  };
+
 
   return (
 
@@ -319,7 +466,7 @@ export default function App() {
             }}
           >
             <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
-              Поддерживаемые форматы: MP3
+              Поддерживаемые форматы: MP3, WAV
             </span>
 
             <Button
@@ -340,10 +487,18 @@ export default function App() {
               Загрузить файл
               <VisuallyHiddenInput
                 type="file"
-                accept=".mp3,audio/mpeg"
+                accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav,audio/wave"
                 onChange={handleFileChange}
               />
             </Button>
+            <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                Максимальный размер — 1 МБ,
+                длительность — менее 5 секунд.
+              </Typography>
           </Box>
 
           {/* Карточка микрофона */}
@@ -408,7 +563,15 @@ export default function App() {
                 Отправить запись
               </Button>
             )}
+            <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                Длительность — менее 5 секунд.
+              </Typography>
           </Box>
+          
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <span
@@ -425,6 +588,58 @@ export default function App() {
             />
           </Box>
           <SpectrogramView file={selectedFile} />
+          {selectedFile && originalAudioUrl && (
+          <Box
+            sx={{
+              width: 'min(850px, 90%)',
+              mt: 3,
+              p: 3,
+              boxSizing: 'border-box',
+              borderRadius: '16px',
+              backgroundColor: '#fff',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.10)',
+            }}
+          >
+            <h3>Прослушивание аудио</h3>
+
+            <Box sx={{ mb: 2 }}>
+              <div>Исходная запись: {selectedFile.name}</div>
+
+              <audio
+                controls
+                preload="metadata"
+                src={originalAudioUrl}
+                style={{ width: '100%', marginTop: '8px' }}
+              />
+            </Box>
+
+            {audioDuration !== null && (
+              <p>
+                Длительность: {audioDuration.toFixed(2)} сек.
+              </p>
+            )}
+
+            {removeNoise && (
+              <Box sx={{ mt: 2 }}>
+                <h4>Запись после удаления шума</h4>
+
+                {processedAudioUrl ? (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={processedAudioUrl}
+                    style={{ width: '100%' }}
+                  />
+                ) : (
+                  <p>
+                    Обработанная запись появится после получения
+                    результата от сервера.
+                  </p>
+                )}
+              </Box>
+            )}
+          </Box>
+        )}
                     {isPredicting && (
             <div className="result-card result-loading">
               <div className="loader" />
@@ -617,6 +832,6 @@ export default function App() {
             </Box>
           </Box>
         </Box>
-</Box>
+    </Box>
   );
 }
