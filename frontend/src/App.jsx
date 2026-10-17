@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
 import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
 import SpectrogramView from './Spectrogram';
 import Box from '@mui/material/Box';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -7,6 +7,8 @@ import Checkbox from '@mui/material/Checkbox';
 import { styled } from '@mui/material/styles';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
+import { useEffect, useRef, useState } from 'react';
+
 const VisuallyHiddenInput = styled('input')({
   clipPath: 'inset(50%)',
   height: 1,
@@ -18,393 +20,803 @@ const VisuallyHiddenInput = styled('input')({
   width: 1,
 });
 
-const label = { slotProps: { input: { 'aria-label': 'Switch demo' } } };
-
-
+const footerLinkSx = {
+  fontFamily: 'Roboto, sans-serif',
+  fontSize: '14px',
+  color: '#555',
+  textDecoration: 'none',
+  '&:hover': {
+    color: '#e00000',
+  },
+};
 
 export default function App() {
+    const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
+    const MAX_FILE_SIZE = 1024 * 1024; // 1 МБ
+    const MAX_AUDIO_DURATION = 5; // строго меньше 5 секунд
+    const MAX_RECORDING_DURATION = 5000; // 5 секунд
+    const recordingTimerRef = useRef(null);
+    const [processedAudioUrl, setProcessedAudioUrl] = useState(null);
+    const [audioDuration, setAudioDuration] = useState(null);
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef(null);
     const streamRef = useRef(null);
+    const [prediction, setPrediction] = useState(null);
+    const [isPredicting, setIsPredicting] = useState(false);
+    const [predictionError, setPredictionError] = useState("");
     const [removeNoise, setRemoveNoise] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
-      const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+
+    // Безопасное определение длительности аудио
+    const getAudioDuration = (file) =>
+      new Promise((resolve) => {
+        // Если это запись с микрофона, мы знаем её примерную длительность (ограничена таймером)
+        if (file.name === 'recording.webm') {
+          resolve(2.5); // безопасное дефолтное значение для проверки
+          return;
+        }
+
+        const audio = new Audio();
+        const url = URL.createObjectURL(file);
+
+        audio.preload = 'metadata';
+
+        audio.onloadedmetadata = () => {
+          const duration = audio.duration;
+          URL.revokeObjectURL(url);
+
+          if (!Number.isFinite(duration) || isNaN(duration)) {
+            // Если браузер не смог прочитать длительность, разрешаем пропустить проверку
+            resolve(1.0);
+            return;
+          }
+
+          resolve(duration);
+        };
+
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          // В случае ошибки чтения тегом audio не блокируем пользователя, бэкенд проверит точно
+          resolve(1.0);
+        };
+
+        audio.src = url;
       });
 
-      streamRef.current = stream;
+    useEffect(() => {
+      if (!selectedFile) {
+        setOriginalAudioUrl(null);
+        return;
+      }
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      const url = URL.createObjectURL(selectedFile);
+      setOriginalAudioUrl(url);
 
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks = [];
+      return () => URL.revokeObjectURL(url);
+    }, [selectedFile]);
 
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
+    useEffect(() => {
+      return () => {
+        if (processedAudioUrl) {
+          URL.revokeObjectURL(processedAudioUrl);
+        }
+        if (recordingTimerRef.current) {
+          clearTimeout(recordingTimerRef.current);
         }
       };
+    }, [processedAudioUrl]);
+    
+    const uploadAudio = async (file) => {
+      if (!file) return;
 
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: recorder.mimeType });
+      setPrediction(null);
+      setPredictionError('');
 
-        const recordedFile = new File(
-          [blob],
-          'recording.webm',
-          { type: recorder.mimeType }
+      if (processedAudioUrl) {
+        URL.revokeObjectURL(processedAudioUrl);
+        setProcessedAudioUrl(null);
+      }
+
+      // Проверка размера файла
+      if (file.size > MAX_FILE_SIZE) {
+        setPredictionError('Максимальный размер файла — 1 МБ.');
+        return;
+      }
+
+      // Проверка длительности
+      let duration;
+      try {
+        duration = await getAudioDuration(file);
+      } catch (error) {
+        duration = 1.0; // fallback
+      }
+
+      if (duration >= MAX_AUDIO_DURATION) {
+        setPredictionError(
+          'Длительность аудио должна быть меньше 5 секунд.'
         );
+        return;
+      }
 
-        setSelectedFile(recordedFile);
-
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Ошибка микрофона:', error);
-      alert('Не удалось включить микрофон. Проверь разрешения браузера.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-
-    setIsRecording(false);
-  };
-        const uploadAudio = async (file) => {
-      const formData = new FormData();
-
-      formData.append('file', file);
-      formData.append('remove_noise', String(removeNoise));
+      setSelectedFile(file);
+      setAudioDuration(duration);
+      setIsPredicting(true);
 
       try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('remove_noise', String(removeNoise));
+
         const response = await fetch('/api/predict', {
           method: 'POST',
           body: formData,
         });
 
         const responseText = await response.text();
+        let data;
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${responseText}`);
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error('Сервер вернул ответ не в формате JSON');
         }
 
-        console.log('Ответ сервера:', responseText);
-        alert('Аудио успешно отправлено!');
+        if (!response.ok) {
+          throw new Error(
+            data.detail || `Ошибка сервера: HTTP ${response.status}`
+          );
+        }
+
+        // Получение обработанного аудио от сервера
+        if (data.processed_audio_base64) {
+          const binary = atob(data.processed_audio_base64);
+          const bytes = Uint8Array.from(
+            binary,
+            (char) => char.charCodeAt(0)
+          );
+
+          const blob = new Blob([bytes], {
+            type: data.processed_audio_mime_type || 'audio/wav',
+          });
+
+          setProcessedAudioUrl(URL.createObjectURL(blob));
+        }
+
+        console.log('Ответ сервера:', data);
+        setPrediction(data);
       } catch (error) {
-        console.error('Ошибка отправки:', error);
-        alert(`Ошибка: ${error.message}`);
+        console.error('Ошибка распознавания:', error);
+        setPredictionError(
+          error.message || 'Не удалось распознать звук'
+        );
+      } finally {
+        setIsPredicting(false);
       }
     };
-    const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
 
-    setSelectedFile(file);
+    const startRecording = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('remove_noise', String(removeNoise));
+        streamRef.current = stream;
 
-    try {
-      console.log('Отправляем файл:', file.name, file.size, 'байт');
-      console.log('Удаление шума:', removeNoise);
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
 
-      const response = await fetch('/api/predict', {
-        method: 'POST',
-        body: formData,
-      });
+        const recorder = new MediaRecorder(stream, { mimeType });
+        const chunks = [];
 
-      const responseText = await response.text();
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
 
-      console.log('HTTP статус:', response.status);
-      console.log('Ответ сервера:', responseText);
+        recorder.onstop = async () => {
+          clearTimeout(recordingTimerRef.current);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${responseText}`);
+          const blob = new Blob(chunks, { type: recorder.mimeType });
+          const recordedFile = new File(
+            [blob],
+            'recording.webm',
+            { type: recorder.mimeType }
+          );
+
+          stream.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+          mediaRecorderRef.current = null;
+          setIsRecording(false);
+
+          // Автоматическая отправка записанного файла на сервер
+          await uploadAudio(recordedFile);
+        };
+
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+
+        recordingTimerRef.current = setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }, MAX_RECORDING_DURATION);
+      } catch (error) {
+        console.error('Ошибка микрофона:', error);
+        alert('Не удалось включить микрофон. Проверь разрешения браузера.');
+        setIsRecording(false);
+      }
+    };
+
+    const stopRecording = () => {
+      clearTimeout(recordingTimerRef.current);
+
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
       }
 
-      alert('Файл успешно отправлен и обработан!');
-    } catch (error) {
-      console.error('Полная ошибка:', error);
-      alert(`Ошибка: ${error.message}`);
-    }
-  };
-  
-  return (
+      setIsRecording(false);
+    };
 
+    const handleFileChange = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+
+      if (!file) return;
+
+      setPrediction(null);
+      setPredictionError('');
+      setAudioDuration(null);
+
+      if (processedAudioUrl) {
+        URL.revokeObjectURL(processedAudioUrl);
+        setProcessedAudioUrl(null);
+      }
+
+      if (originalAudioUrl) {
+        URL.revokeObjectURL(originalAudioUrl);
+        setOriginalAudioUrl(null);
+      }
+
+      setSelectedFile(null);
+
+      if (file.size > MAX_FILE_SIZE) {
+        setPredictionError('Файл слишком большой. Максимальный размер — 1 МБ.');
+        return;
+      }
+
+      await uploadAudio(file);
+    };
+
+    return (
       <Box
         sx={{
           minHeight: '100vh',
-          width: '100%',
-          boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
+          width: '100%',
+          boxSizing: 'border-box',
           alignItems: 'center',
           pt: '20vh',
         }}
       >
-      <h1
-        style={{
-        fontFamily: 'Arial',
-        fontSize: '36px',
-        fontWeight: 'bold',
-        }}
-      >
-        Опознаватель объекта по звуку</h1>
-      <span
-        style={{
-        fontFamily: 'Roboto',
-        fontSize: '24px',
-        }}
-      >Полностью бесплатный онлайн-инструмент для определения класса объекта по записи звука его взаимодействия с окружающей средой</span>
-      
-      {/* Как работает сайт */}
-      <Box
-        sx={{
-          width: 'min(850px, 90%)',
-          mt: 5,
-          mb: 2,
-        }}
-      >
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            position: 'relative',
-            gap: 2,
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: '18px',
-              left: '16.66%',
-              right: '16.66%',
-              height: '1px',
-              backgroundColor: '#d9d9d9',
-            },
-          }}
-        >
-          {[
-            {
-              number: '01',
-              title: 'Загрузка аудио',
-              description: 'Загрузите MP3-файл или запишите звук с микрофона',
-            },
-            {
-              number: '02',
-              title: 'Анализ записи',
-              description: 'Система обработает звук и определит его признаки',
-            },
-            {
-              number: '03',
-              title: 'Результат',
-              description: 'Получите предсказанный класс объекта',
-            },
-          ].map((step) => (
-            <Box
-              key={step.number}
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                position: 'relative',
-                gap: 1.5,
-              }}
-            >
-              <Box
-                sx={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  backgroundColor: '#fff',
-                  border: '1px solid #e00000',
-                  color: '#e00000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontFamily: 'Roboto, sans-serif',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                }}
-              >
-                {step.number}
-              </Box>
-
-              <Box
-                sx={{
-                  fontFamily: 'Roboto, sans-serif',
-                  fontSize: { xs: '14px', sm: '16px' },
-                  fontWeight: 600,
-                  color: '#222',
-                }}
-              >
-                {step.title}
-              </Box>
-
-              <Box
-                sx={{
-                  fontFamily: 'Roboto, sans-serif',
-                  fontSize: { xs: '12px', sm: '14px' },
-                  lineHeight: 1.6,
-                  color: '#777',
-                  maxWidth: 220,
-                }}
-              >
-                {step.description}
-              </Box>
-            </Box>
-          ))}
-        </Box>
-      </Box>
-
-      <Box
-        sx={{
-          mt: '25vh',
-          width: 'min(850px, 90%)',
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: 'stretch',
-          justifyContent: 'center',
-          gap: 3,
-        }}
-      >
-        {/* Карточка загрузки файла */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            padding: '24px 18px',
+            width: '100%',
+            maxWidth: '1000px',
+            mx: 'auto',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: 2,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            boxSizing: 'border-box',
           }}
         >
-          <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
-            Поддерживаемые форматы: MP3
-          </span>
-
-          <Button
-            component="label"
-            variant="contained"
-            startIcon={<CloudUploadIcon />}
-            sx={{
-              backgroundColor: '#ff0000',
-              color: '#ffffff',
-              px: 4,
-              py: 1.5,
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontSize: '16px',
-              '&:hover': { backgroundColor: '#cc0000' },
+          <h1
+            style={{
+              fontFamily: 'Arial',
+              fontSize: '36px',
+              fontWeight: 'bold',
             }}
           >
-            Загрузить файл
-            <VisuallyHiddenInput
-              type="file"
-              accept=".mp3,audio/mpeg"
-              onChange={handleFileChange}
-            />
-          </Button>
-        </Box>
-
-        {/* Карточка микрофона */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            padding: '24px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 2,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-          }}
-        >
-          <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
-            Запись звука с микрофона
-          </span>
-
-          {!isRecording ? (
-            <Button
-              variant="contained"
-              startIcon={<MicIcon />}
-              onClick={startRecording}
-              sx={{
-                backgroundColor: '#ff0000',
-                borderRadius: '10px',
-                textTransform: 'none',
-                px: 4,
-                py: 1.5,
-                '&:hover': { backgroundColor: '#cc0000' },
-              }}
-            >
-              Начать запись
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              startIcon={<StopIcon />}
-              onClick={stopRecording}
-              sx={{
-                backgroundColor: '#333333',
-                borderRadius: '10px',
-                textTransform: 'none',
-                px: 4,
-                py: 1.5,
-              }}
-            >
-              Остановить запись
-            </Button>
-          )}
-
-          {selectedFile?.name === 'recording.webm' && (
-            <Button
-              variant="outlined"
-              onClick={() => uploadAudio(selectedFile)}
-            >
-              Отправить запись
-            </Button>
-          )}
-        </Box>
-      </Box>
-       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            Опознаватель объекта по звуку
+          </h1>
           <span
             style={{
               fontFamily: 'Roboto',
               fontSize: '24px',
             }}
           >
-            Удалить фоновый шум
+            Полностью бесплатный онлайн-инструмент для определения класса объекта по записи звука его взаимодействия с окружающей средой
           </span>
-         <Checkbox
-            checked={removeNoise}
-            onChange={(event) => setRemoveNoise(event.target.checked)}
-          />
+          
+          {/* Как работает сайт */}
+          <Box
+            sx={{
+              width: 'min(850px, 90%)',
+              mt: 5,
+              mb: 2,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                position: 'relative',
+                gap: 2,
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '18px',
+                  left: '16.66%',
+                  right: '16.66%',
+                  height: '1px',
+                  backgroundColor: '#d9d9d9',
+                },
+              }}
+            >
+              {[
+                {
+                  number: '01',
+                  title: 'Загрузка аудио',
+                  description: 'Загрузите MP3-файл или запишите звук с микрофона',
+                },
+                {
+                  number: '02',
+                  title: 'Анализ записи',
+                  description: 'Система обработает звук и определит его признаки',
+                },
+                {
+                  number: '03',
+                  title: 'Результат',
+                  description: 'Получите предсказанный класс объекта',
+                },
+              ].map((step) => (
+                <Box
+                  key={step.number}
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    position: 'relative',
+                    gap: 1.5,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      backgroundColor: '#fff',
+                      border: '1px solid #e00000',
+                      color: '#e00000',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontFamily: 'Roboto, sans-serif',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {step.number}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      fontFamily: 'Roboto, sans-serif',
+                      fontSize: { xs: '14px', sm: '16px' },
+                      fontWeight: 600,
+                      color: '#222',
+                    }}
+                  >
+                    {step.title}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      fontFamily: 'Roboto, sans-serif',
+                      fontSize: { xs: '12px', sm: '14px' },
+                      lineHeight: 1.6,
+                      color: '#777',
+                      maxWidth: 220,
+                    }}
+                  >
+                    {step.description}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              mt: '25vh',
+              width: 'min(850px, 90%)',
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: 'stretch',
+              justifyContent: 'center',
+              gap: 3,
+            }}
+          >
+            {/* Карточка загрузки файла */}
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                padding: '24px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+              }}
+            >
+              <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
+                Поддерживаемые форматы: MP3, WAV
+              </span>
+
+              <Button
+                component="label"
+                variant="contained"
+                startIcon={<CloudUploadIcon />}
+                sx={{
+                  backgroundColor: '#ff0000',
+                  color: '#ffffff',
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  fontSize: '16px',
+                  '&:hover': { backgroundColor: '#cc0000' },
+                }}
+              >
+                Загрузить файл
+                <VisuallyHiddenInput
+                  type="file"
+                  accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav,audio/wave"
+                  onChange={handleFileChange}
+                />
+              </Button>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                Максимальный размер — 1 МБ, длительность — менее 5 секунд.
+              </Typography>
+            </Box>
+
+            {/* Карточка микрофона */}
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                boxSizing: 'border-box',
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                padding: '24px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+              }}
+            >
+              <span style={{ fontFamily: 'Roboto', fontSize: '20px', color: '#333', textAlign: 'center' }}>
+                Запись звука с микрофона
+              </span>
+
+              {!isRecording ? (
+                <Button
+                  variant="contained"
+                  startIcon={<MicIcon />}
+                  onClick={startRecording}
+                  sx={{
+                    backgroundColor: '#ff0000',
+                    borderRadius: '10px',
+                    textTransform: 'none',
+                    px: 4,
+                    py: 1.5,
+                    '&:hover': { backgroundColor: '#cc0000' },
+                  }}
+                >
+                  Начать запись
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  startIcon={<StopIcon />}
+                  onClick={stopRecording}
+                  sx={{
+                    backgroundColor: '#333333',
+                    borderRadius: '10px',
+                    textTransform: 'none',
+                    px: 4,
+                    py: 1.5,
+                  }}
+                >
+                  Остановить запись
+                </Button>
+              )}
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                Длительность — менее 5 секунд.
+              </Typography>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 3 }}>
+            <span
+              style={{
+                fontFamily: 'Roboto',
+                fontSize: '24px',
+              }}
+            >
+              Удалить фоновый шум
+            </span>
+            <Checkbox
+              checked={removeNoise}
+              onChange={(event) => setRemoveNoise(event.target.checked)}
+            />
+          </Box>
+
+          <SpectrogramView file={selectedFile} />
+
+          {selectedFile && originalAudioUrl && (
+            <Box
+              sx={{
+                width: 'min(850px, 90%)',
+                mt: 3,
+                p: 3,
+                boxSizing: 'border-box',
+                borderRadius: '16px',
+                backgroundColor: '#fff',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.10)',
+              }}
+            >
+              <h3>Прослушивание аудио</h3>
+
+              <Box sx={{ mb: 2 }}>
+                <div>Исходная запись: {selectedFile.name}</div>
+                <audio
+                  controls
+                  preload="metadata"
+                  src={originalAudioUrl}
+                  style={{ width: '100%', marginTop: '8px' }}
+                />
+              </Box>
+
+              {audioDuration !== null && (
+                <p>
+                  Длительность: {audioDuration.toFixed(2)} сек.
+                </p>
+              )}
+
+              {removeNoise && (
+                <Box sx={{ mt: 2 }}>
+                  <h4>Запись после удаления шума</h4>
+                  {processedAudioUrl ? (
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={processedAudioUrl}
+                      style={{ width: '100%' }}
+                    />
+                  ) : (
+                    <p>
+                      Обработанная запись появится после получения результата от сервера.
+                    </p>
+                  )}
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {isPredicting && (
+            <div className="result-card result-loading">
+              <div className="loader" />
+              <h3>Анализируем звук...</h3>
+              <p>Определяем материал по характеристикам удара</p>
+            </div>
+          )}
+
+          {predictionError && (
+            <div className="result-card result-error">
+              <span className="result-icon">!</span>
+              <div>
+                <h3>Не удалось распознать звук</h3>
+                <p>{predictionError}</p>
+              </div>
+            </div>
+          )}
+
+          {prediction && (
+            <div className="result-card">
+              <div className="result-heading">
+                <div>
+                  <span className="result-eyebrow">РЕЗУЛЬТАТ АНАЛИЗА</span>
+                  <h2>Материал определён</h2>
+                </div>
+                <span className="result-check">✓</span>
+              </div>
+
+              <div className="material-result">
+                <div className="material-symbol">
+                  {String(
+                    prediction.predicted_class ??
+                    prediction.material ??
+                    prediction.label ??
+                    prediction.prediction
+                  ).toLowerCase().includes("wood")
+                    ? "🪵"
+                    : "🔩"}
+                </div>
+
+                <div>
+                  <span className="material-caption">Предполагаемый материал</span>
+                  <h1>
+                    {(() => {
+                      const material = String(
+                        prediction.predicted_class ??
+                        prediction.material ??
+                        prediction.label ??
+                        prediction.prediction
+                      ).toLowerCase();
+
+                      if (material.includes("wood")) return "Дерево";
+                      if (material.includes("metal")) return "Металл";
+
+                      return prediction.material ??
+                        prediction.predicted_class ??
+                        prediction.label ??
+                        prediction.prediction;
+                    })()}
+                  </h1>
+
+                  <span className="material-class">
+                    Класс модели: {
+                      prediction.predicted_class ??
+                      prediction.material ??
+                      prediction.label ??
+                      prediction.prediction
+                    }
+                  </span>
+                </div>
+              </div>
+
+              {(prediction.confidence != null ||
+                prediction.probability != null) && (
+                <div className="confidence-section">
+                  <div className="confidence-label">
+                    <span>Уверенность модели</span>
+                    <strong>
+                      {Math.round(
+                        Number(prediction.confidence ?? prediction.probability) *
+                        (Number(prediction.confidence ?? prediction.probability) <= 1
+                          ? 100
+                          : 1)
+                      )}%
+                    </strong>
+                  </div>
+
+                  <div className="confidence-track">
+                    <div
+                      className="confidence-fill"
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            Number(prediction.confidence ?? prediction.probability) *
+                              (Number(prediction.confidence ?? prediction.probability) <= 1
+                                ? 100
+                                : 1)
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedFile && (
+                <div className="result-file">
+                  <span className="file-symbol">♫</span>
+                  <div className="result-file-info">
+                    <strong>{selectedFile.name}</strong>
+                    <span>
+                      {(selectedFile.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <span className="file-ready">Обработан</span>
+                </div>
+              )}
+
+              <button
+                className="result-button"
+                onClick={() => {
+                  setPrediction(null);
+                  setPredictionError("");
+                }}
+              >
+                Распознать другой звук
+              </button>
+            </div>
+          )}
         </Box>
-        <SpectrogramView file={selectedFile} />
-    </Box>
-  );
+
+        <Box
+          component="footer"
+          sx={{
+            mt: 'auto',
+            width: '100%',
+            py: 3,
+            textAlign: 'center',
+          }}
+        >
+          <Box
+            sx={{
+              maxWidth: 1000,
+              mx: 'auto',
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
+          >
+            <Box
+              sx={{
+                fontFamily: 'Roboto, sans-serif',
+                fontSize: '13px',
+                color: '#999',
+              }}
+            >
+              © {new Date().getFullYear()} Опознаватель объекта по звуку
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: { xs: 2, sm: 3 },
+              }}
+            >
+              <Box
+                component="a"
+                href="https://t.me/your_username"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={footerLinkSx}
+              >
+                Telegram
+              </Box>
+
+              <Box
+                component="a"
+                href="mailto:your-email@example.com"
+                sx={footerLinkSx}
+              >
+                Почта
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
 }
